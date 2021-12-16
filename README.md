@@ -1,3 +1,64 @@
+# Timberland-sig nvme-cli and libnvme
+Timberland-sig uses a private copy of nvme-cli/libnvme
+
+When cloning your source you will need to use the timberland-sig repositories.
+Both the nvme-cli and libnvme submodule repositories are forked in this private
+Github group.
+
+Use the following command to create your timberland-sig nvme-cli repository:
+
+```
+  $ git clone https://github.com/timberland-sig/nvme-cli.git
+```
+
+## Timberland-sig nvme-cli/libnvme work flow
+
+All changes and pull requests target the timberlandmaster branch.
+
+To submit a change for review to the timberland-sig nvme-cli and libnvme repositories:
+
+1. cd to `subprojects/libnvme` directory and create a private branch
+2. cd to the parent `nvme-cli` directory and create a private branch
+3. edit and compile your changes as normal, makeing your changes in both repositories
+4. git commit your changes to the `subprojects/libnvme` repository first
+   - git push your private branch to the remote timberland-sig/libnvme repository
+5. git commit your changes to the `nvme-cli` repository second
+   - git push your private branch to the remote timberland-sig/nvme-cli repository
+6. open two pull requests at timberland-sig/libnvme and timberland-sig/nvme-cli
+7. merge the two pull requests in order: 1) timberland-sig/libnvme and 2) timberland-sig/nvme-cli
+
+Changes must be made in this order to correctly order the submodule commits with the parent module commits.
+
+More at:
+
+https://mesonbuild.com/Subprojects.html#meson-subprojects-command
+
+### Overriding system libnvme
+
+If development headers for `libnvme` are installed on the system, **meson**
+will use them by default. To avoid it and make sure Timberland's modified libnvme is
+used, use one of the following options:
+
+ - uninstall the libvme header files  (e.g. `libnvme-devel` package)from the system;
+ - use the **meson** option `--wrap-mode=forcefallback` (this will also use
+   local copies of other libraries, `libjson-c` and `zlib`);
+ - use the **meson** option `--force-fallback-for=libnvme` (this will use the
+   local `libnvme` but system headers for `json-c` and `zlib`, if available).
+
+See also [Command-line options for subproject usage](https://mesonbuild.com/Subprojects.html#commandline-options).
+
+The fallback library will be used when the locally built binary (`.build/nvme`) is executed.
+
+If the Timberland nmve-cli and libvme are installed
+on a system in parallel to the upstream versions, you will need to set
+`LD_LIBRARY_PATH` at run time to make sure that the nvme command links with the correct
+shared library. Alternatively, you can pass the the installed path
+to the Timberland libnvme to **meson** at build time (see [meson documentation](https://mesonbuild.com/howtox.html#set-extra-compiler-and-linker-flags-from-the-outside-when-eg-building-distro-packages)):
+
+    LDFLAGS='-Wl,-rpath=/opt/timberland/$LIB' meson .build --prefix=/opt/timberland --force-fallback-for=libnvme
+
+Otherwise, instructions below apply.
+
 # nvme-cli
 NVM-Express user space tooling for Linux.
 
