@@ -1,6 +1,6 @@
 [wrap-git]
-url = https://github.com/linux-nvme/libnvme.git
-revision = 501347ffdf6321d42ceabf173792c95bd44dac0d
+url = https://github.com/timberland-sig/libnvme.git
+revision = timberlandmaster 
 
 [provide]
 libnvme = libnvme_dep
