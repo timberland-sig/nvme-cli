@@ -3239,7 +3239,7 @@ void nvme_show_status(__u16 status)
 		nvme_status_to_string(status, false), status);
 }
 
-static const char *nvme_uuid_to_string(uuid_t uuid)
+const char *nvme_uuid_to_string(uuid_t uuid)
 {
 	/* large enough to hold uuid str (37) + null-termination byte */
 	static char uuid_str[40];

@@ -105,6 +105,8 @@ COMMAND_LIST(
 	ENTRY("rpmb", "Replay Protection Memory Block commands", rpmb_cmd)
 	ENTRY("lockdown", "Submit a Lockdown command,return result", lockdown_cmd)
 	ENTRY("dim", "Send Discovery Information Management command to a Discovery Controller", dim_cmd)
+	ENTRY("connect-nbft", "Connect subsystems listed in ACPI NBFT tables", connect_nbft_cmd)
+	ENTRY("show-nbft", "Show ACPI NBFT table contents", show_nbft_cmd)
 );
 
 #endif
