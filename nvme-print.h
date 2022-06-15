@@ -131,6 +131,7 @@ void json_nvme_finish_zone_list(__u64 nr_zones,
 	struct json_object *zone_list);
 void nvme_show_list_item(nvme_ns_t n);
 
+const char *nvme_uuid_to_string(uuid_t uuid);
 const char *nvme_cmd_to_string(int admin, __u8 opcode);
 const char *nvme_select_to_string(int sel);
 const char *nvme_feature_to_string(enum nvme_features_id feature);

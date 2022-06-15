@@ -3296,6 +3296,16 @@ void nvme_show_status(__u16 status)
 		nvme_status_to_string(status, false), status);
 }
 
+const char *nvme_uuid_to_string(uuid_t uuid)
+{
+	/* large enough to hold uuid str (37) + null-termination byte */
+	static char uuid_str[40];
+
+	uuid_unparse_lower(uuid, uuid_str);
+
+	return uuid_str;
+}
+
 static void nvme_show_id_ctrl_cmic(__u8 cmic)
 {
 	__u8 rsvd = (cmic & 0xF0) >> 4;
