@@ -35,10 +35,10 @@ static const char *nvmf_config_file	= "Use specified JSON configuration file or 
 static bool dump_config;
 static const char dash[100] = {[0 ... 99] = '-'};
 
-#define PCI_SEGMENT(sbdf) ((sbdf & 0xff00) >> 0xf)
-#define PCI_BUS(sbdf) ((sbdf & 0xf0) >> 0x8)
-#define PCI_DEV(sbdf) ((sbdf >> 3) & 0x1f)
-#define PCI_FUNC(sbdf) (sbdf & 0x07)
+#define PCI_SEGMENT(sbdf) ((sbdf & 0xffff0000) >> 16)
+#define PCI_BUS(sbdf) ((sbdf & 0x0000ff00) >> 8)
+#define PCI_DEV(sbdf) ((sbdf & 0x000000f8) >> 3)
+#define PCI_FUNC(sbdf) ((sbdf & 0x00000007) >> 0)
 
 static const char *pci_sbdf_to_string(__u16 pci_sbdf)
 {
@@ -133,17 +133,13 @@ static json_object *hfi_to_json(struct nbft_hfi *hfi)
 
 	check_fail(json_object_add_value_int(hfi_json, "index", hfi->index));
 	check_fail(json_object_add_value_string(hfi_json, "transport", hfi->transport));
-	if (hfi->host_id)
-		check_fail(json_object_add_value_string(hfi_json, "host_id", nvme_uuid_to_string(*hfi->host_id)));
-	if (hfi->host_nqn)
-		check_fail(json_object_add_value_string(hfi_json, "host_nqn", hfi->host_nqn));
 
 	if (strcmp(hfi->transport, "tcp") == 0) {
 		check_fail(json_object_add_value_string(hfi_json, "pcidev", pci_sbdf_to_string(hfi->tcp_info.pci_sbdf)));
 		if (hfi->tcp_info.mac_addr)
 			check_fail(json_object_add_value_string(hfi_json, "mac_addr", mac_addr_to_string(hfi->tcp_info.mac_addr)));
 		check_fail(json_object_add_value_int(hfi_json, "vlan", hfi->tcp_info.vlan));
-		check_fail(json_object_add_value_int(hfi_json, "origin", hfi->tcp_info.origin));
+		check_fail(json_object_add_value_int(hfi_json, "ip_origin", hfi->tcp_info.ip_origin));
 		check_fail(json_object_add_value_string(hfi_json, "ipaddr", hfi->tcp_info.ipaddr));
 		check_fail(json_object_add_value_int(hfi_json, "subnet_mask_prefix", hfi->tcp_info.subnet_mask_prefix));
 		check_fail(json_object_add_value_string(hfi_json, "gateway_ipaddr", hfi->tcp_info.gateway_ipaddr));
@@ -151,11 +147,9 @@ static json_object *hfi_to_json(struct nbft_hfi *hfi)
 		check_fail(json_object_add_value_string(hfi_json, "primary_dns_ipaddr", hfi->tcp_info.primary_dns_ipaddr));
 		check_fail(json_object_add_value_string(hfi_json, "secondary_dns_ipaddr", hfi->tcp_info.secondary_dns_ipaddr));
 		check_fail(json_object_add_value_string(hfi_json, "dhcp_server_ipaddr", hfi->tcp_info.dhcp_server_ipaddr));
-		if (hfi->tcp_info.hostname_from_dhcp)
-			check_fail(json_object_add_value_string(hfi_json, "hostname_from_dhcp", hfi->tcp_info.hostname_from_dhcp));
-		check_fail(json_object_add_value_int(hfi_json, "info_is_from_dhcp", hfi->tcp_info.info_is_from_dhcp));
+		if (hfi->tcp_info.host_name)
+			check_fail(json_object_add_value_string(hfi_json, "host_name", hfi->tcp_info.host_name));
 		check_fail(json_object_add_value_int(hfi_json, "this_hfi_is_default_route", hfi->tcp_info.this_hfi_is_default_route));
-		check_fail(json_object_add_value_int(hfi_json, "transport_offload_supported", hfi->tcp_info.transport_offload_supported));
 	}
 
 	return hfi_json;
@@ -164,7 +158,7 @@ fail:
 	return NULL;
 }
 
-static json_object *subsys_to_json(struct nbft_subsystem_ns *ss)
+static json_object *ssns_to_json(struct nbft_subsystem_ns *ss)
 {
 	struct json_object *ss_json;
 	struct json_object *hfi_array_json;
@@ -221,10 +215,14 @@ static json_object *subsys_to_json(struct nbft_subsystem_ns *ss)
 		}
 		check_fail(json_object_add_value_string(ss_json, "nid", json_str));
 	}
-	check_fail(json_object_add_value_string(ss_json, "subsys_nqn", ss->subsys_nqn));
+	if (ss->subsys_nqn)
+		check_fail(json_object_add_value_string(ss_json, "subsys_nqn", ss->subsys_nqn));
 	check_fail(json_object_add_value_int(ss_json, "controller_id", ss->controller_id));
-	check_fail(json_object_add_value_int(ss_json, "mp_group", ss->mp_group));
 	check_fail(json_object_add_value_int(ss_json, "asqsz", ss->asqsz));
+	if (ss->dhcp_root_path_string)
+		check_fail(json_object_add_value_string(ss_json, "dhcp_root_path_string", ss->dhcp_root_path_string));
+	check_fail(json_object_add_value_int(ss_json, "pdu_header_digest_required", ss->pdu_header_digest_required));
+	check_fail(json_object_add_value_int(ss_json, "data_digest_required", ss->data_digest_required));
 
 	return ss_json;
 fail:
@@ -243,8 +241,10 @@ static json_object *discovery_to_json(struct nbft_discovery *disc)
 			check_fail(json_object_add_value_int(disc_json, "security", disc->security->index));
 		if (disc->hfi)
 			check_fail(json_object_add_value_int(disc_json, "hfi", disc->hfi->index));
-		check_fail(json_object_add_value_string(disc_json, "uri", disc->uri));
-		check_fail(json_object_add_value_string(disc_json, "nqn", disc->nqn));
+		if (disc->uri)
+			check_fail(json_object_add_value_string(disc_json, "uri", disc->uri));
+		if (disc->nqn)
+			check_fail(json_object_add_value_string(disc_json, "nqn", disc->nqn));
 	}
 	return disc_json;
 fail:
@@ -271,6 +271,12 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 			check_fail(json_object_add_value_string(host_json, "nqn", nbft->host.nqn));
 		if (nbft->host.id)
 			check_fail(json_object_add_value_string(host_json, "id", nvme_uuid_to_string(*nbft->host.id)));
+		json_object_add_value_int(host_json, "host_id_configured", nbft->host.host_id_configured);
+		json_object_add_value_int(host_json, "host_nqn_configured", nbft->host.host_nqn_configured);
+		json_object_add_value_string(host_json, "primary_admin_host_flag",
+					     nbft->host.primary == not_indicated ? "not indicated" :
+					     nbft->host.primary == unselected ? "unselected" :
+					     nbft->host.primary == selected ? "selected" : "reserved");
 		if (json_object_object_add(nbft_json, "host", host_json)) {
 			json_free_object(host_json);
 			goto fail;
@@ -284,7 +290,7 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 		if (!subsys_array_json)
 			goto fail;
 		list_for_each(&nbft->subsystem_ns_list, ss, node) {
-			subsys_json = subsys_to_json(ss);
+			subsys_json = ssns_to_json(ss);
 			if (!subsys_json)
 				goto fail;
 			if (json_object_array_add(subsys_array_json, subsys_json)) {
@@ -583,20 +589,16 @@ int connect_nbft(const char *desc, int argc, char **argv)
 				hfi = ss->hfis[i];
 				free_hnqn = false;
 				if (!user_hostnqn) {
-					hostnqn = hnqn = hfi->host_nqn;
+					hostnqn = hnqn = nbft->host.nqn;
 					if (!hostnqn) {
-						hostnqn = hnqn = nbft->host.nqn;
-						if (!hostnqn) {
-							hostnqn = hnqn = nvmf_hostnqn_from_file();
-							free_hnqn = true;
-						}
+						hostnqn = hnqn = nvmf_hostnqn_from_file();
+						free_hnqn = true;
 					}
 				}
 
 				free_hid = false;
 				if (!user_hostid) {
-					hostid = hid = (char *)nvme_uuid_to_string(*hfi->host_id);
-					if (!hostid) {
+					if (*nbft->host.id) {
 						hostid = hid = (char *)nvme_uuid_to_string(*nbft->host.id);
 						if (!hostid) {
 							hostid = hid = nvmf_hostid_from_file();
@@ -619,7 +621,6 @@ int connect_nbft(const char *desc, int argc, char **argv)
 
 				//if (hostkey)
 				//	nvme_host_set_dhchap_key(h, hostkey);
-				fprintf(stderr, "host: %s subsys: %s (%s %s %s)\n", host_traddr, ss->subsys_nqn, ss->transport, ss->transport_address, ss->transport_svcid); // debug
 				c = nvme_create_ctrl(r, ss->subsys_nqn, ss->transport, ss->transport_address,
 						     host_traddr, NULL, ss->transport_svcid);
 				if (!c) {
