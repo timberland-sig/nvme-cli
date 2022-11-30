@@ -107,6 +107,7 @@ int read_sysfs_nbft_files(struct list_head *nbft_list, char *path)
 		ret = nbft_read(&nbft, filename);
 		if (!ret)
 			list_add_tail(nbft_list, &nbft->node);
+		free(dent[i]);
 	}
 	free(dent);
 	return 0;
@@ -506,6 +507,7 @@ int show_nbft(const char *desc, int argc, char **argv)
 			normal_show_nbfts(&nbft_list, show_subsys, show_hfi, show_discovery);
 		else if (flags == JSON)
 			ret = json_show_nbfts(&nbft_list, show_subsys, show_hfi, show_discovery);
+		free_nbfts(&nbft_list);
 	}
 	return ret;
 }
