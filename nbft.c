@@ -183,8 +183,8 @@ static json_object *ssns_to_json(struct nbft_subsystem_ns *ss)
 	check_fail(json_object_object_add(ss_json, "hfis", hfi_array_json));
 
 	check_fail(json_object_add_value_string(ss_json, "transport", ss->transport));
-	check_fail(json_object_add_value_string(ss_json, "transport_address", ss->transport_address));
-	check_fail(json_object_add_value_string(ss_json, "transport_svcid", ss->transport_svcid));
+	check_fail(json_object_add_value_string(ss_json, "traddr", ss->traddr));
+	check_fail(json_object_add_value_string(ss_json, "trsvcid", ss->trsvcid));
 	check_fail(json_object_add_value_int(ss_json, "subsys_port_id", ss->subsys_port_id));
 	check_fail(json_object_add_value_int(ss_json, "nsid", ss->nsid));
 	{
@@ -431,7 +431,7 @@ static void print_nbft_subsys_info(struct nbft_info *nbft)
 	printf("%-5s %-96s %-9s %-39s %-5s %-20s\n", "Index", "Host-NQN", "Transport", "Address", "SvcId", "HFIs");
 	printf("%-.5s %-.96s %-.9s %-.39s %-.5s %-.20s\n", dash, dash, dash, dash, dash, dash);
 	list_for_each(&nbft->subsystem_ns_list, ss, node) {
-		printf("%-5d %-96s %-9s %-39s %-5s", ss->index, ss->subsys_nqn, ss->transport, ss->transport_address, ss->transport_svcid);
+		printf("%-5d %-96s %-9s %-39s %-5s", ss->index, ss->subsys_nqn, ss->transport, ss->traddr, ss->trsvcid);
 		for (i = 0; i < ss->num_hfis; i++)
 			printf(" %d", ss->hfis[i]->index);
 		printf("\n");
@@ -629,8 +629,8 @@ int connect_nbft(const char *desc, int argc, char **argv)
 
 				//if (hostkey)
 				//	nvme_host_set_dhchap_key(h, hostkey);
-				c = nvme_create_ctrl(r, ss->subsys_nqn, ss->transport, ss->transport_address,
-						     host_traddr, NULL, ss->transport_svcid);
+				c = nvme_create_ctrl(r, ss->subsys_nqn, ss->transport, ss->traddr,
+						     host_traddr, NULL, ss->trsvcid);
 				if (!c) {
 					errno = ENOMEM;
 					goto out_free;
@@ -652,8 +652,8 @@ int connect_nbft(const char *desc, int argc, char **argv)
 				    strlen(hfi->tcp_info.dhcp_server_ipaddr) > 0) {
 					nvme_free_ctrl(c);
 					c = nvme_create_ctrl(r, ss->subsys_nqn, ss->transport,
-							     ss->transport_address,
-							     NULL, NULL, ss->transport_svcid);
+							     ss->traddr,
+							     NULL, NULL, ss->trsvcid);
 					if (!c) {
 						errno = ENOMEM;
 						goto out_free;
