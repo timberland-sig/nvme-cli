@@ -182,7 +182,7 @@ substs.set('SYSTEMCTL', get_option('systemctl'))
 
 configure_file(
   input:         'nvme.spec.in',
-  output:        'nvme.spec',
+  output:        'nvme-cli.spec',
   configuration: substs,
 )
 

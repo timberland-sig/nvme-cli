@@ -1,59 +1,83 @@
-Name: 		nvme
+# RHEL 8 compatibility
+%{!?version_no_tilde: %define version_no_tilde %{shrink:%(echo '%{version}' | tr '~' '-')}}
+
+Name: 		nvme-cli
 Version: 	@VERSION@
 Release: 	1%{?dist}
 Summary:  	Core nvme tools
 License: 	GPL-2.0-only
 Group: 		Development/Tools
 URL: 		https://github.com/linux-nvme/nvme-cli/
+Source:     %{name}-%{version_no_tilde}.tar.gz
 Provides:	nvme
-Requires(post): util-linux systemd systemd-udev
 BuildRoot:	%{_tmppath}/%{name}-%{version}-root
-@REQUIRES@
+
+BuildRequires:  meson >= 0.50.0
+BuildRequires:  gcc gcc-c++
+BuildRequires:  systemd-devel
+BuildRequires:  systemd-rpm-macros
+BuildRequires:  zlib-devel
+BuildRequires:  openssl-devel
+BuildRequires:  libnvme-devel >= 1.3
+BuildRequires:  json-c-devel >= 0.13
+
+%if (0%{?rhel} == 0)
+BuildRequires:  python3-nose2
+BuildRequires:  python3-mypy
+BuildRequires:  python3-flake8
+BuildRequires:  python3-autopep8
+BuildRequires:  python3-isort
+%endif
+BuildRequires:  asciidoc
+BuildRequires:  xmlto
+
+Requires:       util-linux
 
 %description
-NVMe is a fast, scalable, direct attached storage interface. The nvme
-cli rpm installs core management tools with minimal dependencies.
+nvme-cli provides NVM-Express user space tooling for Linux.
+
+%prep
+%autosetup -c
+
+%build
+%meson -Dudevrulesdir=%{_udevrulesdir} -Dsystemddir=%{_unitdir} -Ddocs=all -Ddocs-build=true -Dhtmldir=%{_pkgdocdir}
+%meson_build
 
 %install
-meson install --destdir %{buildroot} --skip-subprojects
-touch %{buildroot}@SYSCONFDIR@/nvme/hostnqn
-touch %{buildroot}@SYSCONFDIR@/nvme/hostid
+%meson_install
+%{__install} -pm 644 README.md %{buildroot}%{_pkgdocdir}
+
+# hostid and hostnqn are supposed to be unique per machine.  We obviously
+# can't package them.
+# nvme-stas ships the stas-config@.service that will take care
+# of generating these files if missing. See rhbz 2065886#c19
+rm -f %{buildroot}%{_sysconfdir}/nvme/hostid
+rm -f %{buildroot}%{_sysconfdir}/nvme/hostnqn
+
+# Do not install the dracut rule yet.  See rhbz 1742764
+rm -f %{buildroot}/usr/lib/dracut/dracut.conf.d/70-nvmf-autoconnect.conf
+
+# Move html docs into the right place
+mv %{buildroot}%{_pkgdocdir}/nvme %{buildroot}%{_pkgdocdir}/html
+rm -rf %{buildroot}%{_pkgdocdir}/nvme
 
 %files
-%defattr(-,root,root)
-@SBINDIR@/nvme
-@MANDIR@/man1/nvme*.1*
-@DATADIR@/bash-completion/completions/nvme
-@DATADIR@/zsh/site-functions/_nvme
-%dir @SYSCONFDIR@/nvme
-@SYSCONFDIR@/nvme/hostnqn
-@SYSCONFDIR@/nvme/hostid
-@SYSCONFDIR@/nvme/discovery.conf
-%ghost @SYSCONFDIR@/nvme/config.json
-@UDEVRULESDIR@/70-nvmf-autoconnect.rules
-@UDEVRULESDIR@/71-nvmf-iopolicy-netapp.rules
-@DRACUTRILESDIR@/70-nvmf-autoconnect.conf
-@SYSTEMDDIR@/nvmf-connect@.service
-@SYSTEMDDIR@/nvmefc-boot-connections.service
-@SYSTEMDDIR@/nvmf-connect.target
-@SYSTEMDDIR@/nvmf-autoconnect.service
-
-%clean
-rm -rf $RPM_BUILD_ROOT
-
-%post
-if [ $1 -eq 1 ]; then # 1 : This package is being installed for the first time
-	if [ ! -s @SYSCONFDIR@/nvme/hostnqn ]; then
-		echo $(@SBINDIR@/nvme gen-hostnqn) > @SYSCONFDIR@/nvme/hostnqn
-        fi
-        if [ ! -s @SYSCONFDIR@/nvme/hostid ]; then
-                uuidgen > @SYSCONFDIR@/nvme/hostid
-        fi
-
-	# apply udev and systemd changes that we did
-	systemctl daemon-reload
-	udevadm control --reload-rules && udevadm trigger
-fi
+%license LICENSE
+%doc %{_pkgdocdir}
+%{_sbindir}/nvme
+%{_mandir}/man1/nvme*.gz
+%{_datadir}/bash-completion/completions/nvme
+%{_datadir}/zsh/site-functions/_nvme
+%dir %{_sysconfdir}/nvme
+%{_sysconfdir}/nvme/discovery.conf
+%{_unitdir}/nvmefc-boot-connections.service
+%{_unitdir}/nvmf-autoconnect.service
+%{_unitdir}/nvmf-connect.target
+%{_unitdir}/nvmf-connect@.service
+%{_udevrulesdir}/70-nvmf-autoconnect.rules
+%{_udevrulesdir}/71-nvmf-iopolicy-netapp.rules
+# Do not install the dracut rule yet.  See rhbz 1742764
+# /usr/lib/dracut/dracut.conf.d/70-nvmf-autoconnect.conf
 
 %changelog
 * Tue Dec 17 2019 Simon Schricker <sschricker@suse.de>

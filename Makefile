@@ -8,6 +8,7 @@
 NAME          := nvme
 .DEFAULT_GOAL := ${NAME}
 BUILD-DIR     := .build
+VERSION       := 2.3
 
 ${BUILD-DIR}:
 	meson $@
@@ -28,6 +29,7 @@ endif
 purge:
 ifneq ("$(wildcard ${BUILD-DIR})","")
 	rm -rf ${BUILD-DIR}
+	rm -f nvme-cli-${VERSION}.tar*
 endif
 
 .PHONY: install dist
@@ -43,12 +45,11 @@ test: ${BUILD-DIR}
 	ninja -C ${BUILD-DIR} $@
 
 .PHONY: rpm
-rpm:
-	meson ${BUILD-DIR} \
-		-Dudevrulesdir=$(shell rpm --eval '%{_udevrulesdir}') \
-		-Dsystemddir=$(shell rpm --eval '%{_unitdir}') \
-		-Ddocs=man -Ddocs-build=true
-	rpmbuild -ba ${BUILD-DIR}/nvme.spec --define "_builddir ${BUILD-DIR}" -v
+rpm: ${BUILD-DIR}
+	git archive --format=tar HEAD > nvme-cli-${VERSION}.tar
+	tar rf nvme-cli-${VERSION}.tar ${BUILD-DIR}/nvme-cli.spec
+	gzip -f -9 nvme-cli-${VERSION}.tar
+	rpmbuild -ta nvme-cli-${VERSION}.tar.gz -v
 
 .PHONY: debug
 debug:
