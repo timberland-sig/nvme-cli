@@ -22,7 +22,6 @@
 #include <errno.h>
 #include <stdio.h>
 #include <fnmatch.h>
-#include <uuid/uuid.h>
 
 #include "nvme.h"
 #include "libnvme.h"
@@ -53,7 +52,7 @@ static const char *pci_sbdf_to_string(__u16 pci_sbdf)
 	return pcidev;
 }
 
-static char *mac_addr_to_string(unsigned char *mac_addr)
+static char *mac_addr_to_string(unsigned char mac_addr[6])
 {
 	static char mac_string[18];
 
@@ -89,11 +88,17 @@ int nbft_filter(const struct dirent *dent)
 	return !fnmatch(NBFT_SYSFS_FILENAME, dent->d_name, FNM_PATHNAME);
 }
 
+struct nbft_file_entry {
+	struct list_node node;
+	struct nbft_info *nbft;
+};
+
 int read_sysfs_nbft_files(struct list_head *nbft_list, char *path)
 {
 	struct dirent **dent;
 	char filename[PATH_MAX];
 	int i, count, ret;
+	struct nbft_file_entry *entry;
 	struct nbft_info *nbft;
 
 	count = scandir(path, &dent, nbft_filter, NULL);
@@ -105,8 +110,11 @@ int read_sysfs_nbft_files(struct list_head *nbft_list, char *path)
 	for (i = 0; i < count; i++) {
 		snprintf(filename, sizeof(filename), "%s/%s", path, dent[i]->d_name);
 		ret = nbft_read(&nbft, filename);
-		if (!ret)
-			list_add_tail(nbft_list, &nbft->node);
+		if (!ret) {
+			entry = calloc(1, sizeof(*entry));
+			entry->nbft = nbft;
+			list_add_tail(nbft_list, &entry->node);
+		}
 		free(dent[i]);
 	}
 	free(dent);
@@ -115,17 +123,19 @@ int read_sysfs_nbft_files(struct list_head *nbft_list, char *path)
 
 static void free_nbfts(struct list_head *nbft_list)
 {
-	struct nbft_info *nbft;
+	struct nbft_file_entry *entry;
 
-	while ((nbft = list_pop(nbft_list, struct nbft_info, node)))
-		nbft_free(nbft);
+	while ((entry = list_pop(nbft_list, struct nbft_file_entry, node))) {
+		nbft_free(entry->nbft);
+		free(entry);
+	}
 }
 
 #define check_fail(x)		\
 	if (x)			\
 		goto fail;
 
-static json_object *hfi_to_json(struct nbft_hfi *hfi)
+static json_object *hfi_to_json(struct nbft_info_hfi *hfi)
 {
 	struct json_object *hfi_json;
 
@@ -138,8 +148,7 @@ static json_object *hfi_to_json(struct nbft_hfi *hfi)
 
 	if (strcmp(hfi->transport, "tcp") == 0) {
 		check_fail(json_object_add_value_string(hfi_json, "pcidev", pci_sbdf_to_string(hfi->tcp_info.pci_sbdf)));
-		if (hfi->tcp_info.mac_addr)
-			check_fail(json_object_add_value_string(hfi_json, "mac_addr", mac_addr_to_string(hfi->tcp_info.mac_addr)));
+		check_fail(json_object_add_value_string(hfi_json, "mac_addr", mac_addr_to_string(hfi->tcp_info.mac_addr)));
 		check_fail(json_object_add_value_int(hfi_json, "vlan", hfi->tcp_info.vlan));
 		check_fail(json_object_add_value_int(hfi_json, "ip_origin", hfi->tcp_info.ip_origin));
 		check_fail(json_object_add_value_string(hfi_json, "ipaddr", hfi->tcp_info.ipaddr));
@@ -161,7 +170,7 @@ fail:
 	return NULL;
 }
 
-static json_object *ssns_to_json(struct nbft_subsystem_ns *ss)
+static json_object *ssns_to_json(struct nbft_info_subsystem_ns *ss)
 {
 	struct json_object *ss_json;
 	struct json_object *hfi_array_json;
@@ -195,24 +204,23 @@ static json_object *ssns_to_json(struct nbft_subsystem_ns *ss)
 		json_str_p = json_str;
 
 		switch (ss->nid_type) {
-		case ieee_eui_64:
+		case NBFT_INFO_NID_TYPE_EUI64:
 			check_fail(json_object_add_value_string(ss_json, "nid_type", "eui64"));
 			for (i = 0; i < 8; i++)
 				json_str_p += sprintf(json_str_p, "%02x", ss->nid[i]);
 			break;
 
-		case nguid:
+		case NBFT_INFO_NID_TYPE_NGUID:
 			check_fail(json_object_add_value_string(ss_json, "nid_type", "nguid"));
 			for (i = 0; i < 16; i++)
 				json_str_p += sprintf(json_str_p, "%02x", ss->nid[i]);
 			break;
 
-#ifdef CONFIG_LIBUUID
-		case ns_uuid:
+		case NBFT_INFO_NID_TYPE_NS_UUID:
 			check_fail(json_object_add_value_string(ss_json, "nid_type", "uuid"));
-			uuid_unparse_lower(ss->nid, json_str);
+			nvme_uuid_to_string(ss->nid, json_str);
 			break;
-#endif
+
 		default:
 			break;
 		}
@@ -233,7 +241,7 @@ fail:
 	return NULL;
 }
 
-static json_object *discovery_to_json(struct nbft_discovery *disc)
+static json_object *discovery_to_json(struct nbft_info_discovery *disc)
 {
 	struct json_object *disc_json;
 
@@ -273,13 +281,13 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 		if (nbft->host.nqn)
 			check_fail(json_object_add_value_string(host_json, "nqn", nbft->host.nqn));
 		if (nbft->host.id)
-			check_fail(json_object_add_value_string(host_json, "id", util_uuid_to_string(*nbft->host.id)));
+			check_fail(json_object_add_value_string(host_json, "id", util_uuid_to_string(nbft->host.id)));
 		json_object_add_value_int(host_json, "host_id_configured", nbft->host.host_id_configured);
 		json_object_add_value_int(host_json, "host_nqn_configured", nbft->host.host_nqn_configured);
 		json_object_add_value_string(host_json, "primary_admin_host_flag",
-					     nbft->host.primary == not_indicated ? "not indicated" :
-					     nbft->host.primary == unselected ? "unselected" :
-					     nbft->host.primary == selected ? "selected" : "reserved");
+					     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_NOT_INDICATED ? "not indicated" :
+					     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_UNSELECTED ? "unselected" :
+					     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_SELECTED ? "selected" : "reserved");
 		if (json_object_object_add(nbft_json, "host", host_json)) {
 			json_free_object(host_json);
 			goto fail;
@@ -287,13 +295,13 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 	}
 	if (show_subsys) {
 		struct json_object *subsys_array_json, *subsys_json;
-		struct nbft_subsystem_ns *ss;
+		struct nbft_info_subsystem_ns **ss;
 
 		subsys_array_json = json_create_array();
 		if (!subsys_array_json)
 			goto fail;
-		list_for_each(&nbft->subsystem_ns_list, ss, node) {
-			subsys_json = ssns_to_json(ss);
+		for (ss = nbft->subsystem_ns_list; ss && *ss; ss++) {
+			subsys_json = ssns_to_json(*ss);
 			if (!subsys_json)
 				goto fail;
 			if (json_object_array_add(subsys_array_json, subsys_json)) {
@@ -308,13 +316,13 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 	}
 	if (show_hfi) {
 		struct json_object *hfi_array_json, *hfi_json;
-		struct nbft_hfi *hfi;
+		struct nbft_info_hfi **hfi;
 
 		hfi_array_json = json_create_array();
 		if (!hfi_array_json)
 			goto fail;
-		list_for_each(&nbft->hfi_list, hfi, node) {
-			hfi_json = hfi_to_json(hfi);
+		for (hfi = nbft->hfi_list; hfi && *hfi; hfi++) {
+			hfi_json = hfi_to_json(*hfi);
 			if (!hfi_json)
 				goto fail;
 			if (json_object_array_add(hfi_array_json, hfi_json)) {
@@ -329,13 +337,13 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 	}
 	if (show_discovery) {
 		struct json_object *discovery_array_json, *discovery_json;
-		struct nbft_discovery *disc;
+		struct nbft_info_discovery **disc;
 
 		discovery_array_json = json_create_array();
 		if (!discovery_array_json)
 			goto fail;
-		list_for_each(&nbft->discovery_list, disc, node) {
-			discovery_json = discovery_to_json(disc);
+		for (disc = nbft->discovery_list; disc && *disc; disc++) {
+			discovery_json = discovery_to_json(*disc);
 			if (!discovery_json)
 				goto fail;
 			if (json_object_array_add(discovery_array_json, discovery_json)) {
@@ -357,14 +365,14 @@ fail:
 static int json_show_nbfts(struct list_head *nbft_list, bool show_subsys, bool show_hfi, bool show_discovery)
 {
 	struct json_object *nbft_json_array, *nbft_json;
-	struct nbft_info *nbft;
+	struct nbft_file_entry *entry;
 
 	nbft_json_array = json_create_array();
 	if (!nbft_json_array)
 		return ENOMEM;
 
-	list_for_each(nbft_list, nbft, node) {
-		nbft_json = nbft_to_json(nbft, show_subsys, show_hfi, show_discovery);
+	list_for_each(nbft_list, entry, node) {
+		nbft_json = nbft_to_json(entry->nbft, show_subsys, show_hfi, show_discovery);
 		if (!nbft_json)
 			goto fail;
 		if (json_object_array_add(nbft_json_array, nbft_json)) {
@@ -384,56 +392,59 @@ fail:
 
 static void print_nbft_hfi_info(struct nbft_info *nbft)
 {
-	struct nbft_hfi *hfi;
+	struct nbft_info_hfi **hfi;
 
-	if (list_empty(&nbft->hfi_list))
+	hfi = nbft->hfi_list;
+	if (!hfi || ! *hfi)
 		return;
 
 	printf("\nNBFT HFIs:\n\n");
 	printf("%-5s %-9s %-12s %-17s %-4s %-39s %-16s %-39s %-39s\n", "Index", "Transport", "PCI Address", "MAC Address", "DHCP", "IP Address", "Subnet Mask Bits", "Gateway", "DNS");
 	printf("%-.5s %-.9s %-.12s %-.17s %-.4s %-.39s %-.16s %-.39s %-.39s\n", dash, dash, dash, dash, dash, dash, dash, dash, dash);
-	list_for_each(&nbft->hfi_list, hfi, node)
+	for (; *hfi; hfi++)
 		printf("%-5d %-9s %-12s %-17s %-4s %-39s %-16d %-39s %-39s\n",
-		       hfi->index,
-		       hfi->transport,
-		       pci_sbdf_to_string(hfi->tcp_info.pci_sbdf),
-		       mac_addr_to_string(hfi->tcp_info.mac_addr),
-		       hfi->tcp_info.dhcp_override ? "yes" : "no",
-		       hfi->tcp_info.ipaddr,
-		       hfi->tcp_info.subnet_mask_prefix,
-		       hfi->tcp_info.gateway_ipaddr,
-		       hfi->tcp_info.primary_dns_ipaddr);
+		       (*hfi)->index,
+		       (*hfi)->transport,
+		       pci_sbdf_to_string((*hfi)->tcp_info.pci_sbdf),
+		       mac_addr_to_string((*hfi)->tcp_info.mac_addr),
+		       (*hfi)->tcp_info.dhcp_override ? "yes" : "no",
+		       (*hfi)->tcp_info.ipaddr,
+		       (*hfi)->tcp_info.subnet_mask_prefix,
+		       (*hfi)->tcp_info.gateway_ipaddr,
+		       (*hfi)->tcp_info.primary_dns_ipaddr);
 }
 
 static void print_nbft_discovery_info(struct nbft_info *nbft)
 {
-	struct nbft_discovery *disc;
+	struct nbft_info_discovery **disc;
 
-	if (list_empty(&nbft->discovery_list))
+	disc = nbft->discovery_list;
+	if (!disc || ! *disc)
 		return;
 
 	printf("\nNBFT Discovery Controllers:\n\n");
 	printf("%-5s %-96s %-96s\n", "Index", "Discovery-URI", "Discovery-NQN");
 	printf("%-.5s %-.96s %-.96s\n", dash, dash, dash);
-	list_for_each(&nbft->discovery_list, disc, node)
-		printf("%-5d %-96s %-96s\n", disc->index, disc->uri, disc->nqn);
+	for (; *disc; disc++)
+		printf("%-5d %-96s %-96s\n", (*disc)->index, (*disc)->uri, (*disc)->nqn);
 }
 
 static void print_nbft_subsys_info(struct nbft_info *nbft)
 {
-	struct nbft_subsystem_ns *ss;
+	struct nbft_info_subsystem_ns **ss;
 	int i;
 
-	if (list_empty(&nbft->subsystem_ns_list))
+	ss = nbft->subsystem_ns_list;
+	if (!ss || ! *ss)
 		return;
 
 	printf("\nNBFT Subsystems:\n\n");
 	printf("%-5s %-96s %-9s %-39s %-5s %-20s\n", "Index", "Host-NQN", "Transport", "Address", "SvcId", "HFIs");
 	printf("%-.5s %-.96s %-.9s %-.39s %-.5s %-.20s\n", dash, dash, dash, dash, dash, dash);
-	list_for_each(&nbft->subsystem_ns_list, ss, node) {
-		printf("%-5d %-96s %-9s %-39s %-5s", ss->index, ss->subsys_nqn, ss->transport, ss->traddr, ss->trsvcid);
-		for (i = 0; i < ss->num_hfis; i++)
-			printf(" %d", ss->hfis[i]->index);
+	for (; *ss; ss++) {
+		printf("%-5d %-96s %-9s %-39s %-5s", (*ss)->index, (*ss)->subsys_nqn, (*ss)->transport, (*ss)->traddr, (*ss)->trsvcid);
+		for (i = 0; i < (*ss)->num_hfis; i++)
+			printf(" %d", (*ss)->hfis[i]->index);
 		printf("\n");
 	}
 }
@@ -441,10 +452,10 @@ static void print_nbft_subsys_info(struct nbft_info *nbft)
 static void normal_show_nbft(struct nbft_info *nbft, bool show_subsys, bool show_hfi, bool show_discovery)
 {
 	printf("%s:\n", nbft->filename);
-	if (list_empty(&nbft->hfi_list) &&
-	    list_empty(&nbft->security_list) &&
-	    list_empty(&nbft->discovery_list) &&
-	    list_empty(&nbft->subsystem_ns_list))
+	if ((!nbft->hfi_list || ! *nbft->hfi_list) &&
+	    (!nbft->security_list || ! *nbft->security_list) &&
+	    (!nbft->discovery_list || ! *nbft->discovery_list) &&
+	    (!nbft->subsystem_ns_list || ! *nbft->subsystem_ns_list))
 		printf("(empty)\n");
 	else {
 		if (show_subsys)
@@ -459,12 +470,12 @@ static void normal_show_nbft(struct nbft_info *nbft, bool show_subsys, bool show
 static void normal_show_nbfts(struct list_head *nbft_list, bool show_subsys, bool show_hfi, bool show_discovery)
 {
 	bool not_first = false;
-	struct nbft_info *nbft;
+	struct nbft_file_entry *entry;
 
-	list_for_each(nbft_list, nbft, node) {
+	list_for_each(nbft_list, entry, node) {
 		if (not_first)
 			printf("\n");
-		normal_show_nbft(nbft, show_subsys, show_hfi, show_discovery);
+		normal_show_nbft(entry->nbft, show_subsys, show_hfi, show_discovery);
 		not_first = true;
 	}
 }
@@ -531,9 +542,9 @@ int connect_nbft(const char *desc, int argc, char **argv)
 	enum nvme_print_flags flags = -1;
 	char *format = "normal";
 	struct list_head nbft_list;
-	struct nbft_info *nbft;
-	struct nbft_subsystem_ns *ss;
-	struct nbft_hfi *hfi;
+	struct nbft_file_entry *entry;
+	struct nbft_info_subsystem_ns **ss;
+	struct nbft_info_hfi *hfi;
 
 	OPT_ARGS(opts) = {
 		OPT_STRING("config", 'J', "FILE", &config_file, nvmf_config_file),
@@ -591,13 +602,13 @@ int connect_nbft(const char *desc, int argc, char **argv)
 	if (ret)
 		goto out_free_2;
 
-	list_for_each(&nbft_list, nbft, node)
-		list_for_each(&nbft->subsystem_ns_list, ss, node)
-			for (i = 0; i < ss->num_hfis; i++) {
-				hfi = ss->hfis[i];
+	list_for_each(&nbft_list, entry, node)
+		for (ss = entry->nbft->subsystem_ns_list; ss && *ss; ss++)
+			for (i = 0; i < (*ss)->num_hfis; i++) {
+				hfi = (*ss)->hfis[i];
 				free_hnqn = false;
 				if (!user_hostnqn) {
-					hostnqn = hnqn = nbft->host.nqn;
+					hostnqn = hnqn = entry->nbft->host.nqn;
 					if (!hostnqn) {
 						hostnqn = hnqn = nvmf_hostnqn_from_file();
 						free_hnqn = true;
@@ -606,8 +617,8 @@ int connect_nbft(const char *desc, int argc, char **argv)
 
 				free_hid = false;
 				if (!user_hostid) {
-					if (*nbft->host.id) {
-						hostid = hid = (char *)util_uuid_to_string(*nbft->host.id);
+					if (*entry->nbft->host.id) {
+						hostid = hid = (char *)util_uuid_to_string(entry->nbft->host.id);
 						if (!hostid) {
 							hostid = hid = nvmf_hostid_from_file();
 							free_hid = true;
@@ -623,14 +634,14 @@ int connect_nbft(const char *desc, int argc, char **argv)
 
 				if (!user_host_traddr) {
 					host_traddr = NULL;
-					if (!strncmp(ss->transport, "tcp", 3))
+					if (!strncmp((*ss)->transport, "tcp", 3))
 						host_traddr = hfi->tcp_info.ipaddr;
 				}
 
 				//if (hostkey)
 				//	nvme_host_set_dhchap_key(h, hostkey);
-				c = nvme_create_ctrl(r, ss->subsys_nqn, ss->transport, ss->traddr,
-						     host_traddr, NULL, ss->trsvcid);
+				c = nvme_create_ctrl(r, (*ss)->subsys_nqn, (*ss)->transport, (*ss)->traddr,
+						     host_traddr, NULL, (*ss)->trsvcid);
 				if (!c) {
 					errno = ENOMEM;
 					goto out_free;
@@ -648,12 +659,12 @@ int connect_nbft(const char *desc, int argc, char **argv)
 				*/
 				if (ret == -1 && errno == ENVME_CONNECT_WRITE &&
 				    host_traddr && !user_host_traddr &&
-				    !strcmp(ss->transport, "tcp") &&
+				    !strcmp((*ss)->transport, "tcp") &&
 				    strlen(hfi->tcp_info.dhcp_server_ipaddr) > 0) {
 					nvme_free_ctrl(c);
-					c = nvme_create_ctrl(r, ss->subsys_nqn, ss->transport,
-							     ss->traddr,
-							     NULL, NULL, ss->trsvcid);
+					c = nvme_create_ctrl(r, (*ss)->subsys_nqn, (*ss)->transport,
+							     (*ss)->traddr,
+							     NULL, NULL, (*ss)->trsvcid);
 					if (!c) {
 						errno = ENOMEM;
 						goto out_free;
