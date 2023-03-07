@@ -273,7 +273,7 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 		if (nbft->host.nqn)
 			check_fail(json_object_add_value_string(host_json, "nqn", nbft->host.nqn));
 		if (nbft->host.id)
-			check_fail(json_object_add_value_string(host_json, "id", util_uuid_to_string(*nbft->host.id)));
+			check_fail(json_object_add_value_string(host_json, "id", util_uuid_to_string(nbft->host.id)));
 		json_object_add_value_int(host_json, "host_id_configured", nbft->host.host_id_configured);
 		json_object_add_value_int(host_json, "host_nqn_configured", nbft->host.host_nqn_configured);
 		json_object_add_value_string(host_json, "primary_admin_host_flag",
@@ -607,7 +607,7 @@ int connect_nbft(const char *desc, int argc, char **argv)
 				free_hid = false;
 				if (!user_hostid) {
 					if (*nbft->host.id) {
-						hostid = hid = (char *)util_uuid_to_string(*nbft->host.id);
+						hostid = hid = (char *)util_uuid_to_string(nbft->host.id);
 						if (!hostid) {
 							hostid = hid = nvmf_hostid_from_file();
 							free_hid = true;
