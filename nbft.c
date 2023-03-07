@@ -53,7 +53,7 @@ static const char *pci_sbdf_to_string(__u16 pci_sbdf)
 	return pcidev;
 }
 
-static char *mac_addr_to_string(unsigned char *mac_addr)
+static char *mac_addr_to_string(unsigned char mac_addr[6])
 {
 	static char mac_string[18];
 
@@ -138,8 +138,7 @@ static json_object *hfi_to_json(struct nbft_info_hfi *hfi)
 
 	if (strcmp(hfi->transport, "tcp") == 0) {
 		check_fail(json_object_add_value_string(hfi_json, "pcidev", pci_sbdf_to_string(hfi->tcp_info.pci_sbdf)));
-		if (hfi->tcp_info.mac_addr)
-			check_fail(json_object_add_value_string(hfi_json, "mac_addr", mac_addr_to_string(hfi->tcp_info.mac_addr)));
+		check_fail(json_object_add_value_string(hfi_json, "mac_addr", mac_addr_to_string(hfi->tcp_info.mac_addr)));
 		check_fail(json_object_add_value_int(hfi_json, "vlan", hfi->tcp_info.vlan));
 		check_fail(json_object_add_value_int(hfi_json, "ip_origin", hfi->tcp_info.ip_origin));
 		check_fail(json_object_add_value_string(hfi_json, "ipaddr", hfi->tcp_info.ipaddr));
