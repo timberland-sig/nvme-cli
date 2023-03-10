@@ -22,7 +22,6 @@
 #include <errno.h>
 #include <stdio.h>
 #include <fnmatch.h>
-#include <uuid/uuid.h>
 
 #include "nvme.h"
 #include "libnvme.h"
@@ -217,12 +216,11 @@ static json_object *ssns_to_json(struct nbft_info_subsystem_ns *ss)
 				json_str_p += sprintf(json_str_p, "%02x", ss->nid[i]);
 			break;
 
-#ifdef CONFIG_LIBUUID
 		case NBFT_INFO_NID_TYPE_NS_UUID:
 			check_fail(json_object_add_value_string(ss_json, "nid_type", "uuid"));
-			uuid_unparse_lower(ss->nid, json_str);
+			nvme_uuid_to_string(ss->nid, json_str);
 			break;
-#endif
+
 		default:
 			break;
 		}
