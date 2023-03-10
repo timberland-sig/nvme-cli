@@ -295,13 +295,13 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 	}
 	if (show_subsys) {
 		struct json_object *subsys_array_json, *subsys_json;
-		struct nbft_info_subsystem_ns *ss;
+		struct nbft_info_subsystem_ns **ss;
 
 		subsys_array_json = json_create_array();
 		if (!subsys_array_json)
 			goto fail;
-		list_for_each(&nbft->subsystem_ns_list, ss, node) {
-			subsys_json = ssns_to_json(ss);
+		for (ss = nbft->subsystem_ns_list; ss && *ss; ss++) {
+			subsys_json = ssns_to_json(*ss);
 			if (!subsys_json)
 				goto fail;
 			if (json_object_array_add(subsys_array_json, subsys_json)) {
@@ -431,19 +431,20 @@ static void print_nbft_discovery_info(struct nbft_info *nbft)
 
 static void print_nbft_subsys_info(struct nbft_info *nbft)
 {
-	struct nbft_info_subsystem_ns *ss;
+	struct nbft_info_subsystem_ns **ss;
 	int i;
 
-	if (list_empty(&nbft->subsystem_ns_list))
+	ss = nbft->subsystem_ns_list;
+	if (!ss || ! *ss)
 		return;
 
 	printf("\nNBFT Subsystems:\n\n");
 	printf("%-5s %-96s %-9s %-39s %-5s %-20s\n", "Index", "Host-NQN", "Transport", "Address", "SvcId", "HFIs");
 	printf("%-.5s %-.96s %-.9s %-.39s %-.5s %-.20s\n", dash, dash, dash, dash, dash, dash);
-	list_for_each(&nbft->subsystem_ns_list, ss, node) {
-		printf("%-5d %-96s %-9s %-39s %-5s", ss->index, ss->subsys_nqn, ss->transport, ss->traddr, ss->trsvcid);
-		for (i = 0; i < ss->num_hfis; i++)
-			printf(" %d", ss->hfis[i]->index);
+	for (; *ss; ss++) {
+		printf("%-5d %-96s %-9s %-39s %-5s", (*ss)->index, (*ss)->subsys_nqn, (*ss)->transport, (*ss)->traddr, (*ss)->trsvcid);
+		for (i = 0; i < (*ss)->num_hfis; i++)
+			printf(" %d", (*ss)->hfis[i]->index);
 		printf("\n");
 	}
 }
@@ -454,7 +455,7 @@ static void normal_show_nbft(struct nbft_info *nbft, bool show_subsys, bool show
 	if ((!nbft->hfi_list || ! *nbft->hfi_list) &&
 	    (!nbft->security_list || ! *nbft->security_list) &&
 	    (!nbft->discovery_list || ! *nbft->discovery_list) &&
-	    list_empty(&nbft->subsystem_ns_list))
+	    (!nbft->subsystem_ns_list || ! *nbft->subsystem_ns_list))
 		printf("(empty)\n");
 	else {
 		if (show_subsys)
@@ -542,7 +543,7 @@ int connect_nbft(const char *desc, int argc, char **argv)
 	char *format = "normal";
 	struct list_head nbft_list;
 	struct nbft_file_entry *entry;
-	struct nbft_info_subsystem_ns *ss;
+	struct nbft_info_subsystem_ns **ss;
 	struct nbft_info_hfi *hfi;
 
 	OPT_ARGS(opts) = {
@@ -602,9 +603,9 @@ int connect_nbft(const char *desc, int argc, char **argv)
 		goto out_free_2;
 
 	list_for_each(&nbft_list, entry, node)
-		list_for_each(&entry->nbft->subsystem_ns_list, ss, node)
-			for (i = 0; i < ss->num_hfis; i++) {
-				hfi = ss->hfis[i];
+		for (ss = entry->nbft->subsystem_ns_list; ss && *ss; ss++)
+			for (i = 0; i < (*ss)->num_hfis; i++) {
+				hfi = (*ss)->hfis[i];
 				free_hnqn = false;
 				if (!user_hostnqn) {
 					hostnqn = hnqn = entry->nbft->host.nqn;
@@ -633,14 +634,14 @@ int connect_nbft(const char *desc, int argc, char **argv)
 
 				if (!user_host_traddr) {
 					host_traddr = NULL;
-					if (!strncmp(ss->transport, "tcp", 3))
+					if (!strncmp((*ss)->transport, "tcp", 3))
 						host_traddr = hfi->tcp_info.ipaddr;
 				}
 
 				//if (hostkey)
 				//	nvme_host_set_dhchap_key(h, hostkey);
-				c = nvme_create_ctrl(r, ss->subsys_nqn, ss->transport, ss->traddr,
-						     host_traddr, NULL, ss->trsvcid);
+				c = nvme_create_ctrl(r, (*ss)->subsys_nqn, (*ss)->transport, (*ss)->traddr,
+						     host_traddr, NULL, (*ss)->trsvcid);
 				if (!c) {
 					errno = ENOMEM;
 					goto out_free;
@@ -658,12 +659,12 @@ int connect_nbft(const char *desc, int argc, char **argv)
 				*/
 				if (ret == -1 && errno == ENVME_CONNECT_WRITE &&
 				    host_traddr && !user_host_traddr &&
-				    !strcmp(ss->transport, "tcp") &&
+				    !strcmp((*ss)->transport, "tcp") &&
 				    strlen(hfi->tcp_info.dhcp_server_ipaddr) > 0) {
 					nvme_free_ctrl(c);
-					c = nvme_create_ctrl(r, ss->subsys_nqn, ss->transport,
-							     ss->traddr,
-							     NULL, NULL, ss->trsvcid);
+					c = nvme_create_ctrl(r, (*ss)->subsys_nqn, (*ss)->transport,
+							     (*ss)->traddr,
+							     NULL, NULL, (*ss)->trsvcid);
 					if (!c) {
 						errno = ENOMEM;
 						goto out_free;
