@@ -337,13 +337,13 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 	}
 	if (show_discovery) {
 		struct json_object *discovery_array_json, *discovery_json;
-		struct nbft_info_discovery *disc;
+		struct nbft_info_discovery **disc;
 
 		discovery_array_json = json_create_array();
 		if (!discovery_array_json)
 			goto fail;
-		list_for_each(&nbft->discovery_list, disc, node) {
-			discovery_json = discovery_to_json(disc);
+		for (disc = nbft->discovery_list; disc && *disc; disc++) {
+			discovery_json = discovery_to_json(*disc);
 			if (!discovery_json)
 				goto fail;
 			if (json_object_array_add(discovery_array_json, discovery_json)) {
@@ -416,16 +416,17 @@ static void print_nbft_hfi_info(struct nbft_info *nbft)
 
 static void print_nbft_discovery_info(struct nbft_info *nbft)
 {
-	struct nbft_info_discovery *disc;
+	struct nbft_info_discovery **disc;
 
-	if (list_empty(&nbft->discovery_list))
+	disc = nbft->discovery_list;
+	if (!disc || ! *disc)
 		return;
 
 	printf("\nNBFT Discovery Controllers:\n\n");
 	printf("%-5s %-96s %-96s\n", "Index", "Discovery-URI", "Discovery-NQN");
 	printf("%-.5s %-.96s %-.96s\n", dash, dash, dash);
-	list_for_each(&nbft->discovery_list, disc, node)
-		printf("%-5d %-96s %-96s\n", disc->index, disc->uri, disc->nqn);
+	for (; *disc; disc++)
+		printf("%-5d %-96s %-96s\n", (*disc)->index, (*disc)->uri, (*disc)->nqn);
 }
 
 static void print_nbft_subsys_info(struct nbft_info *nbft)
@@ -452,7 +453,7 @@ static void normal_show_nbft(struct nbft_info *nbft, bool show_subsys, bool show
 	printf("%s:\n", nbft->filename);
 	if ((!nbft->hfi_list || ! *nbft->hfi_list) &&
 	    (!nbft->security_list || ! *nbft->security_list) &&
-	    list_empty(&nbft->discovery_list) &&
+	    (!nbft->discovery_list || ! *nbft->discovery_list) &&
 	    list_empty(&nbft->subsystem_ns_list))
 		printf("(empty)\n");
 	else {
