@@ -89,11 +89,17 @@ int nbft_filter(const struct dirent *dent)
 	return !fnmatch(NBFT_SYSFS_FILENAME, dent->d_name, FNM_PATHNAME);
 }
 
+struct nbft_file_entry {
+	struct list_node node;
+	struct nbft_info *nbft;
+};
+
 int read_sysfs_nbft_files(struct list_head *nbft_list, char *path)
 {
 	struct dirent **dent;
 	char filename[PATH_MAX];
 	int i, count, ret;
+	struct nbft_file_entry *entry;
 	struct nbft_info *nbft;
 
 	count = scandir(path, &dent, nbft_filter, NULL);
@@ -105,8 +111,11 @@ int read_sysfs_nbft_files(struct list_head *nbft_list, char *path)
 	for (i = 0; i < count; i++) {
 		snprintf(filename, sizeof(filename), "%s/%s", path, dent[i]->d_name);
 		ret = nbft_read(&nbft, filename);
-		if (!ret)
-			list_add_tail(nbft_list, &nbft->node);
+		if (!ret) {
+			entry = calloc(1, sizeof(*entry));
+			entry->nbft = nbft;
+			list_add_tail(nbft_list, &entry->node);
+		}
 		free(dent[i]);
 	}
 	free(dent);
@@ -115,10 +124,12 @@ int read_sysfs_nbft_files(struct list_head *nbft_list, char *path)
 
 static void free_nbfts(struct list_head *nbft_list)
 {
-	struct nbft_info *nbft;
+	struct nbft_file_entry *entry;
 
-	while ((nbft = list_pop(nbft_list, struct nbft_info, node)))
-		nbft_free(nbft);
+	while ((entry = list_pop(nbft_list, struct nbft_file_entry, node))) {
+		nbft_free(entry->nbft);
+		free(entry);
+	}
 }
 
 #define check_fail(x)		\
@@ -356,14 +367,14 @@ fail:
 static int json_show_nbfts(struct list_head *nbft_list, bool show_subsys, bool show_hfi, bool show_discovery)
 {
 	struct json_object *nbft_json_array, *nbft_json;
-	struct nbft_info *nbft;
+	struct nbft_file_entry *entry;
 
 	nbft_json_array = json_create_array();
 	if (!nbft_json_array)
 		return ENOMEM;
 
-	list_for_each(nbft_list, nbft, node) {
-		nbft_json = nbft_to_json(nbft, show_subsys, show_hfi, show_discovery);
+	list_for_each(nbft_list, entry, node) {
+		nbft_json = nbft_to_json(entry->nbft, show_subsys, show_hfi, show_discovery);
 		if (!nbft_json)
 			goto fail;
 		if (json_object_array_add(nbft_json_array, nbft_json)) {
@@ -458,12 +469,12 @@ static void normal_show_nbft(struct nbft_info *nbft, bool show_subsys, bool show
 static void normal_show_nbfts(struct list_head *nbft_list, bool show_subsys, bool show_hfi, bool show_discovery)
 {
 	bool not_first = false;
-	struct nbft_info *nbft;
+	struct nbft_file_entry *entry;
 
-	list_for_each(nbft_list, nbft, node) {
+	list_for_each(nbft_list, entry, node) {
 		if (not_first)
 			printf("\n");
-		normal_show_nbft(nbft, show_subsys, show_hfi, show_discovery);
+		normal_show_nbft(entry->nbft, show_subsys, show_hfi, show_discovery);
 		not_first = true;
 	}
 }
@@ -530,7 +541,7 @@ int connect_nbft(const char *desc, int argc, char **argv)
 	enum nvme_print_flags flags = -1;
 	char *format = "normal";
 	struct list_head nbft_list;
-	struct nbft_info *nbft;
+	struct nbft_file_entry *entry;
 	struct nbft_info_subsystem_ns *ss;
 	struct nbft_info_hfi *hfi;
 
@@ -590,13 +601,13 @@ int connect_nbft(const char *desc, int argc, char **argv)
 	if (ret)
 		goto out_free_2;
 
-	list_for_each(&nbft_list, nbft, node)
-		list_for_each(&nbft->subsystem_ns_list, ss, node)
+	list_for_each(&nbft_list, entry, node)
+		list_for_each(&entry->nbft->subsystem_ns_list, ss, node)
 			for (i = 0; i < ss->num_hfis; i++) {
 				hfi = ss->hfis[i];
 				free_hnqn = false;
 				if (!user_hostnqn) {
-					hostnqn = hnqn = nbft->host.nqn;
+					hostnqn = hnqn = entry->nbft->host.nqn;
 					if (!hostnqn) {
 						hostnqn = hnqn = nvmf_hostnqn_from_file();
 						free_hnqn = true;
@@ -605,8 +616,8 @@ int connect_nbft(const char *desc, int argc, char **argv)
 
 				free_hid = false;
 				if (!user_hostid) {
-					if (*nbft->host.id) {
-						hostid = hid = (char *)util_uuid_to_string(nbft->host.id);
+					if (*entry->nbft->host.id) {
+						hostid = hid = (char *)util_uuid_to_string(entry->nbft->host.id);
 						if (!hostid) {
 							hostid = hid = nvmf_hostid_from_file();
 							free_hid = true;
