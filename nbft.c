@@ -451,7 +451,7 @@ static void normal_show_nbft(struct nbft_info *nbft, bool show_subsys, bool show
 {
 	printf("%s:\n", nbft->filename);
 	if ((!nbft->hfi_list || ! *nbft->hfi_list) &&
-	    list_empty(&nbft->security_list) &&
+	    (!nbft->security_list || ! *nbft->security_list) &&
 	    list_empty(&nbft->discovery_list) &&
 	    list_empty(&nbft->subsystem_ns_list))
 		printf("(empty)\n");
