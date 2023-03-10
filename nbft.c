@@ -316,13 +316,13 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 	}
 	if (show_hfi) {
 		struct json_object *hfi_array_json, *hfi_json;
-		struct nbft_info_hfi *hfi;
+		struct nbft_info_hfi **hfi;
 
 		hfi_array_json = json_create_array();
 		if (!hfi_array_json)
 			goto fail;
-		list_for_each(&nbft->hfi_list, hfi, node) {
-			hfi_json = hfi_to_json(hfi);
+		for (hfi = nbft->hfi_list; hfi && *hfi; hfi++) {
+			hfi_json = hfi_to_json(*hfi);
 			if (!hfi_json)
 				goto fail;
 			if (json_object_array_add(hfi_array_json, hfi_json)) {
@@ -392,25 +392,26 @@ fail:
 
 static void print_nbft_hfi_info(struct nbft_info *nbft)
 {
-	struct nbft_info_hfi *hfi;
+	struct nbft_info_hfi **hfi;
 
-	if (list_empty(&nbft->hfi_list))
+	hfi = nbft->hfi_list;
+	if (!hfi || ! *hfi)
 		return;
 
 	printf("\nNBFT HFIs:\n\n");
 	printf("%-5s %-9s %-12s %-17s %-4s %-39s %-16s %-39s %-39s\n", "Index", "Transport", "PCI Address", "MAC Address", "DHCP", "IP Address", "Subnet Mask Bits", "Gateway", "DNS");
 	printf("%-.5s %-.9s %-.12s %-.17s %-.4s %-.39s %-.16s %-.39s %-.39s\n", dash, dash, dash, dash, dash, dash, dash, dash, dash);
-	list_for_each(&nbft->hfi_list, hfi, node)
+	for (; *hfi; hfi++)
 		printf("%-5d %-9s %-12s %-17s %-4s %-39s %-16d %-39s %-39s\n",
-		       hfi->index,
-		       hfi->transport,
-		       pci_sbdf_to_string(hfi->tcp_info.pci_sbdf),
-		       mac_addr_to_string(hfi->tcp_info.mac_addr),
-		       hfi->tcp_info.dhcp_override ? "yes" : "no",
-		       hfi->tcp_info.ipaddr,
-		       hfi->tcp_info.subnet_mask_prefix,
-		       hfi->tcp_info.gateway_ipaddr,
-		       hfi->tcp_info.primary_dns_ipaddr);
+		       (*hfi)->index,
+		       (*hfi)->transport,
+		       pci_sbdf_to_string((*hfi)->tcp_info.pci_sbdf),
+		       mac_addr_to_string((*hfi)->tcp_info.mac_addr),
+		       (*hfi)->tcp_info.dhcp_override ? "yes" : "no",
+		       (*hfi)->tcp_info.ipaddr,
+		       (*hfi)->tcp_info.subnet_mask_prefix,
+		       (*hfi)->tcp_info.gateway_ipaddr,
+		       (*hfi)->tcp_info.primary_dns_ipaddr);
 }
 
 static void print_nbft_discovery_info(struct nbft_info *nbft)
@@ -449,7 +450,7 @@ static void print_nbft_subsys_info(struct nbft_info *nbft)
 static void normal_show_nbft(struct nbft_info *nbft, bool show_subsys, bool show_hfi, bool show_discovery)
 {
 	printf("%s:\n", nbft->filename);
-	if (list_empty(&nbft->hfi_list) &&
+	if ((!nbft->hfi_list || ! *nbft->hfi_list) &&
 	    list_empty(&nbft->security_list) &&
 	    list_empty(&nbft->discovery_list) &&
 	    list_empty(&nbft->subsystem_ns_list))
