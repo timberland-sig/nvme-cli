@@ -24,15 +24,14 @@
 #include <fnmatch.h>
 
 #include "nvme.h"
+#include "nbft.h"
 #include "libnvme.h"
 #include "nvme-print.h"
+#include "fabrics.h"
 
-#define NBFT_SYSFS_PATH		"/sys/firmware/acpi/tables"
 #define NBFT_SYSFS_FILENAME	"NBFT*"
 #define PATH_NVMF_CONFIG	"/etc/nvme/config.json"
 
-static const char *nvmf_config_file	= "Use specified JSON configuration file or 'none' to disable";
-static bool dump_config;
 static const char dash[100] = {[0 ... 99] = '-'};
 
 #define PCI_SEGMENT(sbdf) ((sbdf & 0xffff0000) >> 16)
@@ -93,7 +92,7 @@ struct nbft_file_entry {
 	struct nbft_info *nbft;
 };
 
-int read_sysfs_nbft_files(struct list_head *nbft_list, char *path)
+int read_nbft_files(struct list_head *nbft_list, char *path)
 {
 	struct dirent **dent;
 	char filename[PATH_MAX];
@@ -512,7 +511,7 @@ int show_nbft(const char *desc, int argc, char **argv)
 		return EINVAL;
 
 	list_head_init(&nbft_list);
-	ret = read_sysfs_nbft_files(&nbft_list, nbft_path);
+	ret = read_nbft_files(&nbft_list, nbft_path);
 	if (!ret) {
 		if (flags == NORMAL)
 			normal_show_nbfts(&nbft_list, show_subsys, show_hfi, show_discovery);
@@ -523,106 +522,51 @@ int show_nbft(const char *desc, int argc, char **argv)
 	return ret;
 }
 
-int connect_nbft(const char *desc, int argc, char **argv)
+int discover_from_nbft(nvme_root_t r, char *hostnqn_arg, char *hostid_arg,
+		       char *hostnqn_sys, char *hostid_sys,
+		       const char *desc, bool connect,
+		       const struct nvme_fabrics_config *cfg, char *nbft_path,
+		       enum nvme_print_flags flags, bool verbose)
 {
-	char *hnqn = NULL, *hid = NULL;
-	char *hostnqn = NULL, *hostid = NULL;
-	char *host_traddr = NULL;
-	char *nbft_path = NBFT_SYSFS_PATH;
-	bool user_hostnqn = false, user_hostid = false, user_host_traddr = false;
-	int free_hnqn, free_hid;
-	char *config_file = PATH_NVMF_CONFIG;
-	//char *hostkey = NULL, *ctrlkey = NULL;
-	unsigned int verbose = 0;
-	nvme_root_t r;
+	char *hostnqn = NULL, *hostid = NULL, *host_traddr = NULL;
 	nvme_host_t h;
 	nvme_ctrl_t c;
 	int ret, i;
-	struct nvme_fabrics_config cfg;
-	enum nvme_print_flags flags = -1;
-	char *format = "normal";
 	struct list_head nbft_list;
 	struct nbft_file_entry *entry;
 	struct nbft_info_subsystem_ns **ss;
 	struct nbft_info_hfi *hfi;
 
-	OPT_ARGS(opts) = {
-		OPT_STRING("config", 'J', "FILE", &config_file, nvmf_config_file),
-		OPT_INCR("verbose", 'v', &verbose, "Increase logging verbosity"),
-		OPT_FLAG("dump-config", 'O', &dump_config, "Dump JSON configuration to stdout"),
-		OPT_FMT("output-format", 'o', &format, "Output format: normal|json"),
-		OPT_STRING("hostnqn", 'q', "STR", &hostnqn, "user-defined hostnqn"),
-		OPT_STRING("hostid", 'I', "STR", &hostid, "user-defined hostid"),
-		OPT_STRING("host-traddr", 'w', "STR", &host_traddr, "user-defined host traddr"),
-		OPT_STRING("nbft-path", 'P', "STR", &nbft_path, "user-defined path for NBFT tables"),
-		OPT_END()
-	};
-
-	nvmf_default_config(&cfg);
-	ret = argconfig_parse(argc, argv, desc, opts);
-	if (ret)
-		return ret;
-
-	if (!strcmp(format, ""))
-		flags = -1;
-	else if (!strcmp(format, "normal"))
-		flags = NORMAL;
-	else if (!strcmp(format, "json"))
-		flags = JSON;
-	else
-		return EINVAL;
-
-	if (!strcmp(config_file, "none"))
-		config_file = NULL;
-
-	r = nvme_create_root(stderr, map_log_level(verbose, false));
-	if (!r) {
-		fprintf(stderr, "Failed to create topology root: %s\n",
-			nvme_strerror(errno));
-		return -errno;
-	}
-
-	ret = nvme_scan_topology(r, NULL, NULL);
-	if (ret < 0) {
-		fprintf(stderr, "Failed to scan topology: %s\n",
-			nvme_strerror(errno));
-		nvme_free_tree(r);
-	}
-	nvme_read_config(r, config_file);
-
-	if (host_traddr)
-		user_host_traddr = true;
-	if (hostnqn)
-		user_hostnqn = true;
-	if (hostid)
-		user_hostid = true;
+	if (!connect)
+		/* to do: print discovery-type info from NBFT tables */
+		return 0;
 
 	list_head_init(&nbft_list);
-	ret = read_sysfs_nbft_files(&nbft_list, nbft_path);
+	ret = read_nbft_files(&nbft_list, nbft_path);
 	if (ret)
 		goto out_free_2;
 
 	list_for_each(&nbft_list, entry, node)
 		for (ss = entry->nbft->subsystem_ns_list; ss && *ss; ss++)
 			for (i = 0; i < (*ss)->num_hfis; i++) {
+				nvme_ctrl_t cl;
+
 				hfi = (*ss)->hfis[i];
-				free_hnqn = false;
-				if (!user_hostnqn) {
-					hostnqn = hnqn = entry->nbft->host.nqn;
-					if (!hostnqn) {
-						hostnqn = hnqn = nvmf_hostnqn_from_file();
-						free_hnqn = true;
-					}
+				if (hostnqn_arg)
+					hostnqn = hostnqn_arg;
+				else {
+					hostnqn = entry->nbft->host.nqn;
+					if (!hostnqn)
+						hostnqn = hostnqn_sys;
 				}
 
-				free_hid = false;
-				if (!user_hostid) {
+				if (hostid_arg)
+					hostid = hostid_arg;
+				else {
 					if (*entry->nbft->host.id) {
-						hostid = hid = (char *)util_uuid_to_string(entry->nbft->host.id);
-						if (!hostid) {
-							hostid = hid = nvmf_hostid_from_file();
-							free_hid = true;
-						}
+						hostid = (char *)util_uuid_to_string(entry->nbft->host.id);
+						if (!hostid)
+							hostid = hostid_sys;
 					}
 				}
 
@@ -632,25 +576,42 @@ int connect_nbft(const char *desc, int argc, char **argv)
 					goto out_free;
 				}
 
-				if (!user_host_traddr) {
+				if (!cfg->host_traddr) {
 					host_traddr = NULL;
 					if (!strncmp((*ss)->transport, "tcp", 3))
 						host_traddr = hfi->tcp_info.ipaddr;
 				}
 
+				struct tr_config trcfg = {
+					.subsysnqn	= (*ss)->subsys_nqn,
+					.transport	= (*ss)->transport,
+					.traddr		= (*ss)->traddr,
+					.host_traddr	= host_traddr,
+					.host_iface	= NULL,
+					.trsvcid	= (*ss)->trsvcid,
+				};
+
+				/* Already connected ? */
+				cl = lookup_ctrl(r, &trcfg);
+				if (cl && nvme_ctrl_get_name(cl))
+					continue;
+
 				//if (hostkey)
 				//	nvme_host_set_dhchap_key(h, hostkey);
-				c = nvme_create_ctrl(r, (*ss)->subsys_nqn, (*ss)->transport, (*ss)->traddr,
-						     host_traddr, NULL, (*ss)->trsvcid);
+
+				c = nvme_create_ctrl(r, (*ss)->subsys_nqn, (*ss)->transport,
+						     (*ss)->traddr, host_traddr, NULL,
+						     (*ss)->trsvcid);
 				if (!c) {
 					errno = ENOMEM;
 					goto out_free;
 				}
+
 				//if (ctrlkey)
 				//	nvme_ctrl_set_dhchap_key(c, ctrlkey);
 
 				errno = 0;
-				ret = nvmf_add_ctrl(h, c, &cfg);
+				ret = nvmf_add_ctrl(h, c, cfg);
 
 				/*
 				 * With TCP/DHCP, it can happen that the OS
@@ -658,10 +619,15 @@ int connect_nbft(const char *desc, int argc, char **argv)
 				 * firwmare had. Retry without host_traddr.
 				*/
 				if (ret == -1 && errno == ENVME_CONNECT_WRITE &&
-				    host_traddr && !user_host_traddr &&
 				    !strcmp((*ss)->transport, "tcp") &&
 				    strlen(hfi->tcp_info.dhcp_server_ipaddr) > 0) {
 					nvme_free_ctrl(c);
+
+					trcfg.host_traddr = NULL;
+					cl = lookup_ctrl(r, &trcfg);
+					if (cl && nvme_ctrl_get_name(cl))
+						continue;
+
 					c = nvme_create_ctrl(r, (*ss)->subsys_nqn, (*ss)->transport,
 							     (*ss)->traddr,
 							     NULL, NULL, (*ss)->trsvcid);
@@ -670,7 +636,7 @@ int connect_nbft(const char *desc, int argc, char **argv)
 						goto out_free;
 					}
 					errno = 0;
-					ret = nvmf_add_ctrl(h, c, &cfg);
+					ret = nvmf_add_ctrl(h, c, cfg);
 					if (ret == 0 && verbose >= 1)
 						fprintf(stderr,
 							"connect with host_traddr=\"%s\" failed, success after omitting host_traddr\n",
@@ -686,17 +652,10 @@ int connect_nbft(const char *desc, int argc, char **argv)
 						json_connect_msg(c);
 				}
 out_free:
-				if (free_hnqn)
-					free(hnqn);
-				if (free_hid)
-					free(hid);
 				if (errno == ENOMEM)
 					goto out_free_2;
 			}
 out_free_2:
-	if (dump_config)
-		nvme_dump_config(r);
-	nvme_free_tree(r);
 	free_nbfts(&nbft_list);
 	return errno;
 }

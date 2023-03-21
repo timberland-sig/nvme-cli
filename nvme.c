@@ -9312,12 +9312,6 @@ static int nmi_send(int argc, char **argv, struct command *cmd, struct plugin *p
 	return nvme_mi(argc, argv, nvme_admin_nvme_mi_send, desc);
 }
 
-int connect_nbft_cmd(int argc, char **argv, struct command *command, struct plugin *plugin)
-{
-	const char *desc = "Connect subsystems listed in ACPI NBFT tables";
-	return connect_nbft(desc, argc, argv);
-}
-
 int show_nbft_cmd(int argc, char **argv, struct command *command, struct plugin *plugin)
 {
 	const char *desc = "Show ACPI NBFT table conects";
