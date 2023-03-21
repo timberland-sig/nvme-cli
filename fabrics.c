@@ -40,9 +40,11 @@
 
 #include "common.h"
 #include "nvme.h"
+#include "nbft.h"
 #include "libnvme.h"
 #include "nvme-print.h"
 #include "nvme-print-json.h"
+#include "fabrics.h"
 
 #define PATH_NVMF_DISC		SYSCONFDIR "/nvme/discovery.conf"
 #define PATH_NVMF_CONFIG	SYSCONFDIR "/nvme/config.json"
@@ -118,6 +120,18 @@ struct tr_config {
 	const char *host_iface;
 	const char *trsvcid;
 };
+
+static void space_strip_len(int max, char *str)
+{
+	int i;
+
+	for (i = max - 1; i >= 0; i--) {
+		if (str[i] != '\0' && str[i] != ' ')
+			return;
+		else
+			str[i] = '\0';
+	}
+}
 
 /*
  * Compare two C strings and handle NULL pointers gracefully.
@@ -202,7 +216,7 @@ static nvme_ctrl_t lookup_discovery_ctrl(nvme_root_t r, struct tr_config *trcfg)
 	return __lookup_ctrl(r, trcfg, disc_ctrl_config_match);
 }
 
-static nvme_ctrl_t lookup_ctrl(nvme_root_t r, struct tr_config *trcfg)
+nvme_ctrl_t lookup_ctrl(nvme_root_t r, struct tr_config *trcfg)
 {
 	return __lookup_ctrl(r, trcfg, ctrl_config_match);
 }
@@ -700,6 +714,7 @@ int nvmf_discover(const char *desc, int argc, char **argv, bool connect)
 {
 	char *subsysnqn = NVME_DISC_SUBSYS_NAME;
 	char *hostnqn = NULL, *hostid = NULL, *hostkey = NULL;
+	char *hostnqn_arg, *hostid_arg;
 	char *transport = NULL, *traddr = NULL, *trsvcid = NULL;
 	char *config_file = PATH_NVMF_CONFIG;
 	char *hnqn = NULL, *hid = NULL;
@@ -714,6 +729,8 @@ int nvmf_discover(const char *desc, int argc, char **argv, bool connect)
 	char *device = NULL;
 	bool force = false;
 	bool json_config = false;
+	bool nbft = false, nonbft = false;
+	char *nbft_path = NBFT_SYSFS_PATH;
 
 	OPT_ARGS(opts) = {
 		OPT_STRING("device",   'd', "DEV", &device, "use existing discovery controller device"),
@@ -726,6 +743,9 @@ int nvmf_discover(const char *desc, int argc, char **argv, bool connect)
 		OPT_INCR("verbose",      'v', &verbose,       "Increase logging verbosity"),
 		OPT_FLAG("dump-config",  'O', &dump_config,   "Dump configuration file to stdout"),
 		OPT_FLAG("force",          0, &force,         "Force persistent discovery controller creation"),
+		OPT_FLAG("nbft",           0, &nbft,          "Only look at NBFT tables"),
+		OPT_FLAG("no-nbft",        0, &nonbft,        "Do not look at NBFT tables"),
+		OPT_STRING("nbft-path",   'N', "STR", &nbft_path, "user-defined path for NBFT tables"),
 		OPT_END()
 	};
 
@@ -758,6 +778,8 @@ int nvmf_discover(const char *desc, int argc, char **argv, bool connect)
 	if (!nvme_read_config(r, config_file))
 		json_config = true;
 
+	hostnqn_arg = hostnqn;
+	hostid_arg = hostid;
 	if (!hostnqn)
 		hostnqn = hnqn = nvmf_hostnqn_from_file();
 	if (!hostnqn)
@@ -779,6 +801,14 @@ int nvmf_discover(const char *desc, int argc, char **argv, bool connect)
 		nvme_host_set_dhchap_key(h, hostkey);
 
 	if (!device && !transport && !traddr) {
+		if (!nonbft)
+			discover_from_nbft(r, hostnqn_arg, hostid_arg,
+					   hostnqn, hostid, desc, connect,
+					   &cfg, nbft_path, flags, verbose);
+
+		if (nbft)
+			goto out_free;
+
 		if (json_config)
 			ret = discover_from_json_config_file(r, h, desc,
 							     connect, &cfg,

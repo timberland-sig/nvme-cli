@@ -19,5 +19,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-extern int connect_nbft(const char *desc, int argc, char **argv);
+#define NBFT_SYSFS_PATH		"/sys/firmware/acpi/tables"
+
+extern int discover_from_nbft(nvme_root_t r, char *hostnqn_arg, char *hostid_arg,
+			      char *hostnqn_sys, char *hostid_sys,
+			      const char *desc, bool connect,
+			      const struct nvme_fabrics_config *cfg, char *nbft_path,
+			      enum nvme_print_flags flags, bool verbose);
+
 extern int show_nbft(const char *desc, int argc, char **argv);
