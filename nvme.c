@@ -67,7 +67,6 @@
 #include "util/argconfig.h"
 #include "util/suffix.h"
 #include "fabrics.h"
-#include "nbft.h"
 
 #define CREATE_CMD
 #include "nvme-builtin.h"
@@ -9391,12 +9390,6 @@ static int nmi_send(int argc, char **argv, struct command *cmd, struct plugin *p
 	const char *desc = "Send a NVMe-MI Send command to the specified device, return results.";
 
 	return nvme_mi(argc, argv, nvme_admin_nvme_mi_send, desc);
-}
-
-int show_nbft_cmd(int argc, char **argv, struct command *command, struct plugin *plugin)
-{
-	const char *desc = "Show ACPI NBFT table conects";
-	return show_nbft(desc, argc, argv);
 }
 
 void register_extension(struct plugin *plugin)
