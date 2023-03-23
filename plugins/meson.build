@@ -24,6 +24,7 @@ sources += [
   'plugins/zns/zns.c',
   'plugins/inspur/inspur-nvme.c',
   'plugins/fdp/fdp.c',
+  'plugins/nbft/nbft-plugin.c',
 ]
 subdir('solidigm')
 subdir('ocp')
