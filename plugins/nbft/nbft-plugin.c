@@ -386,15 +386,15 @@ static void print_nbft_hfi_info(struct nbft_info *nbft)
 	}
 
 	printf("\nNBFT HFIs:\n\n");
-	printf("%-3.3s %-4.4s %-10.10s %-17.17s %-4.4s %-*.*s %-4.4s %-*.*s %-*.*s\n",
+	printf("%-3.3s|%-4.4s|%-10.10s|%-17.17s|%-4.4s|%-*.*s|%-4.4s|%-*.*s|%-*.*s\n",
 	       "Idx", "Trsp", "PCI Addr", "MAC Addr", "DHCP",
 	       ip_width, ip_width, "IP Addr", "Mask",
 	       gw_width, gw_width, "Gateway", dns_width, dns_width, "DNS");
-	printf("%-.3s %-.4s %-.10s %-.17s %-.4s %-.*s %-.4s %-.*s %-.*s\n",
+	printf("%-.3s+%-.4s+%-.10s+%-.17s+%-.4s+%-.*s+%-.4s+%-.*s+%-.*s\n",
 	       dash, dash, dash, dash, dash, ip_width, dash, dash,
 	       gw_width, dash, dns_width, dash);
 	for (hfi = nbft->hfi_list; *hfi; hfi++)
-		printf("%-3d %-4.4s %-10.10s %-17.17s %-4.4s %-*.*s %-4d %-*.*s %-*.*s\n",
+		printf("%-3d|%-4.4s|%-10.10s|%-17.17s|%-4.4s|%-*.*s|%-4d|%-*.*s|%-*.*s\n",
 		       (*hfi)->index,
 		       (*hfi)->transport,
 		       pci_sbdf_to_string((*hfi)->tcp_info.pci_sbdf),
@@ -427,11 +427,11 @@ static void print_nbft_discovery_info(struct nbft_info *nbft)
 	}
 
 	printf("\nNBFT Discovery Controllers:\n\n");
-	printf("%-3.3s %-*.*s %-*.*s\n", "Idx", uri_width, uri_width, "URI",
+	printf("%-3.3s|%-*.*s|%-*.*s\n", "Idx", uri_width, uri_width, "URI",
 	       nqn_width, nqn_width, "NQN");
-	printf("%-.3s %-.*s %-.*s\n", dash, uri_width, dash, nqn_width, dash);
+	printf("%-.3s+%-.*s+%-.*s\n", dash, uri_width, dash, nqn_width, dash);
 	for (disc = nbft->discovery_list; *disc; disc++)
-		printf("%-3d %-*.*s %-*.*s\n", (*disc)->index,
+		printf("%-3d|%-*.*s|%-*.*s\n", (*disc)->index,
 		       uri_width, uri_width, (*disc)->uri,
 		       nqn_width, nqn_width, (*disc)->nqn);
 }
@@ -489,16 +489,16 @@ static void print_nbft_subsys_info(struct nbft_info *nbft)
 	}
 
 	printf("\nNBFT Subsystems:\n\n");
-	printf("%-3.3s %-*.*s %-4.4s %-*.*s %-5.5s %-*.*s\n",
+	printf("%-3.3s|%-*.*s|%-4.4s|%-*.*s|%-5.5s|%-*.*s\n",
 	       "Idx", nqn_width, nqn_width, "NQN",
 	       "Trsp", adr_width, adr_width, "Address", "SvcId", hfi_width, hfi_width, "HFIs");
-	printf("%-.3s %-.*s %-.4s %-.*s %-.5s %-.*s\n",
+	printf("%-.3s+%-.*s+%-.4s+%-.*s+%-.5s+%-.*s\n",
 	       dash, nqn_width, dash, dash, adr_width, dash, dash, hfi_width, dash);
 	for (ss = nbft->subsystem_ns_list; *ss; ss++) {
 		char hfi_buf[HFIS_LEN];
 
 		print_hfis(*ss, hfi_buf);
-		printf("%-3d %-*.*s %-4.4s %-*.*s %-5.5s %-*.*s\n",
+		printf("%-3d|%-*.*s|%-4.4s|%-*.*s|%-5.5s|%-*.*s\n",
 		       (*ss)->index, nqn_width, nqn_width, (*ss)->subsys_nqn,
 		       (*ss)->transport, adr_width, adr_width, (*ss)->traddr,
 		       (*ss)->trsvcid, hfi_width, hfi_width, hfi_buf);
