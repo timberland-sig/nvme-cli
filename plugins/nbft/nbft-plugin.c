@@ -32,7 +32,7 @@
 #define CREATE_CMD
 #include "nbft-plugin.h"
 
-static const char dash[100] = {[0 ... 99] = '-'};
+static const char dash[100] = {[0 ... 98] = '-', [99] = '\0'};
 
 #define PCI_SEGMENT(sbdf) ((sbdf & 0xffff0000) >> 16)
 #define PCI_BUS(sbdf) ((sbdf & 0x0000ff00) >> 8)
@@ -365,59 +365,143 @@ fail:
 static void print_nbft_hfi_info(struct nbft_info *nbft)
 {
 	struct nbft_info_hfi **hfi;
+	unsigned int ip_width = 8, gw_width = 8, dns_width = 8;
 
 	hfi = nbft->hfi_list;
 	if (!hfi || ! *hfi)
 		return;
 
+	for (; *hfi; hfi++) {
+		unsigned int len;
+
+		len = strlen((*hfi)->tcp_info.ipaddr);
+		if (len > ip_width)
+			ip_width = len;
+		len = strlen((*hfi)->tcp_info.gateway_ipaddr);
+		if (len > gw_width)
+			gw_width = len;
+		len = strlen((*hfi)->tcp_info.primary_dns_ipaddr);
+		if (len > dns_width)
+			dns_width = len;
+	}
+
 	printf("\nNBFT HFIs:\n\n");
-	printf("%-5s %-9s %-12s %-17s %-4s %-39s %-16s %-39s %-39s\n", "Index", "Transport", "PCI Address", "MAC Address", "DHCP", "IP Address", "Subnet Mask Bits", "Gateway", "DNS");
-	printf("%-.5s %-.9s %-.12s %-.17s %-.4s %-.39s %-.16s %-.39s %-.39s\n", dash, dash, dash, dash, dash, dash, dash, dash, dash);
-	for (; *hfi; hfi++)
-		printf("%-5d %-9s %-12s %-17s %-4s %-39s %-16d %-39s %-39s\n",
+	printf("%-3.3s %-4.4s %-10.10s %-17.17s %-4.4s %-*.*s %-4.4s %-*.*s %-*.*s\n",
+	       "Idx", "Trsp", "PCI Addr", "MAC Addr", "DHCP",
+	       ip_width, ip_width, "IP Addr", "Mask",
+	       gw_width, gw_width, "Gateway", dns_width, dns_width, "DNS");
+	printf("%-.3s %-.4s %-.10s %-.17s %-.4s %-.*s %-.4s %-.*s %-.*s\n",
+	       dash, dash, dash, dash, dash, ip_width, dash, dash,
+	       gw_width, dash, dns_width, dash);
+	for (hfi = nbft->hfi_list; *hfi; hfi++)
+		printf("%-3d %-4.4s %-10.10s %-17.17s %-4.4s %-*.*s %-4d %-*.*s %-*.*s\n",
 		       (*hfi)->index,
 		       (*hfi)->transport,
 		       pci_sbdf_to_string((*hfi)->tcp_info.pci_sbdf),
 		       mac_addr_to_string((*hfi)->tcp_info.mac_addr),
 		       (*hfi)->tcp_info.dhcp_override ? "yes" : "no",
-		       (*hfi)->tcp_info.ipaddr,
+		       ip_width, ip_width, (*hfi)->tcp_info.ipaddr,
 		       (*hfi)->tcp_info.subnet_mask_prefix,
-		       (*hfi)->tcp_info.gateway_ipaddr,
-		       (*hfi)->tcp_info.primary_dns_ipaddr);
+		       gw_width, gw_width, (*hfi)->tcp_info.gateway_ipaddr,
+		       dns_width, dns_width, (*hfi)->tcp_info.primary_dns_ipaddr);
 }
 
 static void print_nbft_discovery_info(struct nbft_info *nbft)
 {
 	struct nbft_info_discovery **disc;
+	unsigned int nqn_width = 20, uri_width = 12;
 
 	disc = nbft->discovery_list;
 	if (!disc || ! *disc)
 		return;
 
+	for (; *disc; disc++) {
+		size_t len;
+
+		len = strlen((*disc)->uri);
+		if (len > uri_width)
+			uri_width = len;
+		len = strlen((*disc)->nqn);
+		if (len > nqn_width)
+			nqn_width = len;
+	}
+
 	printf("\nNBFT Discovery Controllers:\n\n");
-	printf("%-5s %-96s %-96s\n", "Index", "Discovery-URI", "Discovery-NQN");
-	printf("%-.5s %-.96s %-.96s\n", dash, dash, dash);
-	for (; *disc; disc++)
-		printf("%-5d %-96s %-96s\n", (*disc)->index, (*disc)->uri, (*disc)->nqn);
+	printf("%-3.3s %-*.*s %-*.*s\n", "Idx", uri_width, uri_width, "URI",
+	       nqn_width, nqn_width, "NQN");
+	printf("%-.3s %-.*s %-.*s\n", dash, uri_width, dash, nqn_width, dash);
+	for (disc = nbft->discovery_list; *disc; disc++)
+		printf("%-3d %-*.*s %-*.*s\n", (*disc)->index,
+		       uri_width, uri_width, (*disc)->uri,
+		       nqn_width, nqn_width, (*disc)->nqn);
 }
+
+#define HFIS_LEN 20
+static size_t print_hfis(const struct nbft_info_subsystem_ns *ss, char buf[HFIS_LEN])
+{
+	char hfi_buf[HFIS_LEN];
+	size_t len, ofs;
+	int i;
+
+	len = snprintf(hfi_buf, sizeof(hfi_buf), "%d", ss->hfis[0]->index);
+	for (i = 1; i < ss->num_hfis; i++) {
+		ofs = len;
+		len += snprintf(hfi_buf + ofs, sizeof(hfi_buf) - ofs, ",%d",
+				ss->hfis[i]->index);
+		/*
+		 * If the list doesn't fit in HFIS_LEN characters,
+		 * truncate and end with "..."
+		 */
+		if (len >= sizeof(hfi_buf)) {
+			while (ofs < sizeof(hfi_buf) - 1)
+				hfi_buf[ofs++] = '.';
+			hfi_buf[ofs] = '\0';
+			len = sizeof(hfi_buf) - 1;
+			break;
+		}
+	}
+	if (buf)
+		memcpy(buf, hfi_buf, len + 1);
+	return len;
+}
+
 
 static void print_nbft_subsys_info(struct nbft_info *nbft)
 {
 	struct nbft_info_subsystem_ns **ss;
-	int i;
+	unsigned int nqn_width = 20, adr_width = 8, hfi_width = 4;
 
 	ss = nbft->subsystem_ns_list;
 	if (!ss || ! *ss)
 		return;
+	for (; *ss; ss++) {
+		size_t len;
+
+		len = strlen((*ss)->subsys_nqn);
+		if (len > nqn_width)
+			nqn_width = len;
+		len = strlen((*ss)->traddr);
+		if (len > adr_width)
+			adr_width = len;
+		len = print_hfis(*ss, NULL);
+		if (len > hfi_width)
+			hfi_width = len;
+	}
 
 	printf("\nNBFT Subsystems:\n\n");
-	printf("%-5s %-96s %-9s %-39s %-5s %-20s\n", "Index", "Host-NQN", "Transport", "Address", "SvcId", "HFIs");
-	printf("%-.5s %-.96s %-.9s %-.39s %-.5s %-.20s\n", dash, dash, dash, dash, dash, dash);
-	for (; *ss; ss++) {
-		printf("%-5d %-96s %-9s %-39s %-5s", (*ss)->index, (*ss)->subsys_nqn, (*ss)->transport, (*ss)->traddr, (*ss)->trsvcid);
-		for (i = 0; i < (*ss)->num_hfis; i++)
-			printf(" %d", (*ss)->hfis[i]->index);
-		printf("\n");
+	printf("%-3.3s %-*.*s %-4.4s %-*.*s %-5.5s %-*.*s\n",
+	       "Idx", nqn_width, nqn_width, "NQN",
+	       "Trsp", adr_width, adr_width, "Address", "SvcId", hfi_width, hfi_width, "HFIs");
+	printf("%-.3s %-.*s %-.4s %-.*s %-.5s %-.*s\n",
+	       dash, nqn_width, dash, dash, adr_width, dash, dash, hfi_width, dash);
+	for (ss = nbft->subsystem_ns_list; *ss; ss++) {
+		char hfi_buf[HFIS_LEN];
+
+		print_hfis(*ss, hfi_buf);
+		printf("%-3d %-*.*s %-4.4s %-*.*s %-5.5s %-*.*s\n",
+		       (*ss)->index, nqn_width, nqn_width, (*ss)->subsys_nqn,
+		       (*ss)->transport, adr_width, adr_width, (*ss)->traddr,
+		       (*ss)->trsvcid, hfi_width, hfi_width, hfi_buf);
 	}
 }
 
