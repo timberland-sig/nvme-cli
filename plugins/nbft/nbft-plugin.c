@@ -120,6 +120,8 @@ static json_object *ssns_to_json(struct nbft_info_subsystem_ns *ss)
 {
 	struct json_object *ss_json;
 	struct json_object *hfi_array_json;
+	char json_str[40];
+	char *json_str_p;
 	int i;
 
 	ss_json = json_create_object();
@@ -144,40 +146,37 @@ static json_object *ssns_to_json(struct nbft_info_subsystem_ns *ss)
 	    || json_object_add_value_int(ss_json, "subsys_port_id", ss->subsys_port_id)
 	    || json_object_add_value_int(ss_json, "nsid", ss->nsid))
 		goto fail;
-	{
-		char json_str[40];
-		char *json_str_p;
 
-		memset(json_str, 0, sizeof(json_str));
-		json_str_p = json_str;
+	memset(json_str, 0, sizeof(json_str));
+	json_str_p = json_str;
 
-		switch (ss->nid_type) {
-		case NBFT_INFO_NID_TYPE_EUI64:
-			if (json_object_add_value_string(ss_json, "nid_type", "eui64"))
-				goto fail;
-			for (i = 0; i < 8; i++)
-				json_str_p += sprintf(json_str_p, "%02x", ss->nid[i]);
-			break;
-
-		case NBFT_INFO_NID_TYPE_NGUID:
-			if (json_object_add_value_string(ss_json, "nid_type", "nguid"))
-				goto fail;
-			for (i = 0; i < 16; i++)
-				json_str_p += sprintf(json_str_p, "%02x", ss->nid[i]);
-			break;
-
-		case NBFT_INFO_NID_TYPE_NS_UUID:
-			if (json_object_add_value_string(ss_json, "nid_type", "uuid"))
-				goto fail;
-			nvme_uuid_to_string(ss->nid, json_str);
-			break;
-
-		default:
-			break;
-		}
-		if (json_object_add_value_string(ss_json, "nid", json_str))
+	switch (ss->nid_type) {
+	case NBFT_INFO_NID_TYPE_EUI64:
+		if (json_object_add_value_string(ss_json, "nid_type", "eui64"))
 			goto fail;
+		for (i = 0; i < 8; i++)
+			json_str_p += sprintf(json_str_p, "%02x", ss->nid[i]);
+		break;
+
+	case NBFT_INFO_NID_TYPE_NGUID:
+		if (json_object_add_value_string(ss_json, "nid_type", "nguid"))
+			goto fail;
+		for (i = 0; i < 16; i++)
+			json_str_p += sprintf(json_str_p, "%02x", ss->nid[i]);
+		break;
+
+	case NBFT_INFO_NID_TYPE_NS_UUID:
+		if (json_object_add_value_string(ss_json, "nid_type", "uuid"))
+			goto fail;
+		nvme_uuid_to_string(ss->nid, json_str);
+		break;
+
+	default:
+		break;
 	}
+	if (json_object_add_value_string(ss_json, "nid", json_str))
+		goto fail;
+
 	if ((ss->subsys_nqn
 	     && json_object_add_value_string(ss_json, "subsys_nqn", ss->subsys_nqn))
 	    || json_object_add_value_int(ss_json, "controller_id", ss->controller_id)
@@ -222,7 +221,7 @@ static json_object *discovery_to_json(struct nbft_info_discovery *disc)
 
 static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys, bool show_hfi, bool show_discovery)
 {
-	struct json_object *nbft_json;
+	struct json_object *nbft_json, *host_json;
 
 	nbft_json = json_create_object();
 	if (!nbft_json)
@@ -231,31 +230,28 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 	if (json_object_add_value_string(nbft_json, "filename", nbft->filename))
 		goto fail;
 
-	{
-		struct json_object *host_json;
-
-		host_json = json_create_object();
-		if (!host_json)
-			goto fail;
-		if ((nbft->host.nqn
-		     && json_object_add_value_string(host_json, "nqn", nbft->host.nqn))
-		    || (nbft->host.id
-			&& json_object_add_value_string(host_json, "id",
-							util_uuid_to_string(nbft->host.id))))
-			goto fail;
-		json_object_add_value_int(host_json, "host_id_configured",
-					  nbft->host.host_id_configured);
-		json_object_add_value_int(host_json, "host_nqn_configured",
-					  nbft->host.host_nqn_configured);
-		json_object_add_value_string(host_json, "primary_admin_host_flag",
-					     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_NOT_INDICATED ? "not indicated" :
-					     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_UNSELECTED ? "unselected" :
-					     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_SELECTED ? "selected" : "reserved");
-		if (json_object_object_add(nbft_json, "host", host_json)) {
-			json_free_object(host_json);
-			goto fail;
-		}
+	host_json = json_create_object();
+	if (!host_json)
+		goto fail;
+	if ((nbft->host.nqn
+	     && json_object_add_value_string(host_json, "nqn", nbft->host.nqn))
+	    || (nbft->host.id
+		&& json_object_add_value_string(host_json, "id",
+						util_uuid_to_string(nbft->host.id))))
+		goto fail;
+	json_object_add_value_int(host_json, "host_id_configured",
+				  nbft->host.host_id_configured);
+	json_object_add_value_int(host_json, "host_nqn_configured",
+				  nbft->host.host_nqn_configured);
+	json_object_add_value_string(host_json, "primary_admin_host_flag",
+				     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_NOT_INDICATED ? "not indicated" :
+				     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_UNSELECTED ? "unselected" :
+				     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_SELECTED ? "selected" : "reserved");
+	if (json_object_object_add(nbft_json, "host", host_json)) {
+		json_free_object(host_json);
+		goto fail;
 	}
+
 	if (show_subsys) {
 		struct json_object *subsys_array_json, *subsys_json;
 		struct nbft_info_subsystem_ns **ss;
