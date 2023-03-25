@@ -1,23 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-/*
- * nbft.c
- *
- * Copyright (c) 2021-2022, Dell Inc. or its subsidiaries.  All Rights Reserved.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- */
 
 #include <errno.h>
 #include <stdio.h>
@@ -130,12 +111,10 @@ int discover_from_nbft(nvme_root_t r, char *hostnqn_arg, char *hostid_arg,
 
 				if (hostid_arg)
 					hostid = hostid_arg;
-				else {
-					if (*entry->nbft->host.id) {
-						hostid = (char *)util_uuid_to_string(entry->nbft->host.id);
-						if (!hostid)
-							hostid = hostid_sys;
-					}
+				else if (*entry->nbft->host.id) {
+					hostid = (char *)util_uuid_to_string(entry->nbft->host.id);
+					if (!hostid)
+						hostid = hostid_sys;
 				}
 
 				h = nvme_lookup_host(r, hostnqn, hostid);
@@ -184,8 +163,8 @@ int discover_from_nbft(nvme_root_t r, char *hostnqn_arg, char *hostid_arg,
 				/*
 				 * With TCP/DHCP, it can happen that the OS
 				 * obtains a different local IP address than the
-				 * firwmare had. Retry without host_traddr.
-				*/
+				 * firmware had. Retry without host_traddr.
+				 */
 				if (ret == -1 && errno == ENVME_CONNECT_WRITE &&
 				    !strcmp((*ss)->transport, "tcp") &&
 				    strlen(hfi->tcp_info.dhcp_server_ipaddr) > 0) {

@@ -1,23 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-/*
- * nbft.c
- *
- * Copyright (c) 2021-2022, Dell Inc. or its subsidiaries.  All Rights Reserved.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- */
 
 #include <errno.h>
 #include <stdio.h>
@@ -334,7 +315,8 @@ fail:
 	return NULL;
 }
 
-static int json_show_nbfts(struct list_head *nbft_list, bool show_subsys, bool show_hfi, bool show_discovery)
+static int json_show_nbfts(struct list_head *nbft_list, bool show_subsys,
+			   bool show_hfi, bool show_discovery)
 {
 	struct json_object *nbft_json_array, *nbft_json;
 	struct nbft_file_entry *entry;
@@ -368,7 +350,7 @@ static void print_nbft_hfi_info(struct nbft_info *nbft)
 	unsigned int ip_width = 8, gw_width = 8, dns_width = 8;
 
 	hfi = nbft->hfi_list;
-	if (!hfi || ! *hfi)
+	if (!hfi || !*hfi)
 		return;
 
 	for (; *hfi; hfi++) {
@@ -412,7 +394,7 @@ static void print_nbft_discovery_info(struct nbft_info *nbft)
 	unsigned int nqn_width = 20, uri_width = 12;
 
 	disc = nbft->discovery_list;
-	if (!disc || ! *disc)
+	if (!disc || !*disc)
 		return;
 
 	for (; *disc; disc++) {
@@ -472,7 +454,7 @@ static void print_nbft_subsys_info(struct nbft_info *nbft)
 	unsigned int nqn_width = 20, adr_width = 8, hfi_width = 4;
 
 	ss = nbft->subsystem_ns_list;
-	if (!ss || ! *ss)
+	if (!ss || !*ss)
 		return;
 	for (; *ss; ss++) {
 		size_t len;
@@ -505,13 +487,14 @@ static void print_nbft_subsys_info(struct nbft_info *nbft)
 	}
 }
 
-static void normal_show_nbft(struct nbft_info *nbft, bool show_subsys, bool show_hfi, bool show_discovery)
+static void normal_show_nbft(struct nbft_info *nbft, bool show_subsys,
+			     bool show_hfi, bool show_discovery)
 {
 	printf("%s:\n", nbft->filename);
-	if ((!nbft->hfi_list || ! *nbft->hfi_list) &&
-	    (!nbft->security_list || ! *nbft->security_list) &&
-	    (!nbft->discovery_list || ! *nbft->discovery_list) &&
-	    (!nbft->subsystem_ns_list || ! *nbft->subsystem_ns_list))
+	if ((!nbft->hfi_list || !*nbft->hfi_list) &&
+	    (!nbft->security_list || !*nbft->security_list) &&
+	    (!nbft->discovery_list || !*nbft->discovery_list) &&
+	    (!nbft->subsystem_ns_list || !*nbft->subsystem_ns_list))
 		printf("(empty)\n");
 	else {
 		if (show_subsys)
@@ -523,7 +506,8 @@ static void normal_show_nbft(struct nbft_info *nbft, bool show_subsys, bool show
 	}
 }
 
-static void normal_show_nbfts(struct list_head *nbft_list, bool show_subsys, bool show_hfi, bool show_discovery)
+static void normal_show_nbfts(struct list_head *nbft_list, bool show_subsys,
+			      bool show_hfi, bool show_discovery)
 {
 	bool not_first = false;
 	struct nbft_file_entry *entry;
