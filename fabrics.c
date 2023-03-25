@@ -745,7 +745,7 @@ int nvmf_discover(const char *desc, int argc, char **argv, bool connect)
 		OPT_FLAG("force",          0, &force,         "Force persistent discovery controller creation"),
 		OPT_FLAG("nbft",           0, &nbft,          "Only look at NBFT tables"),
 		OPT_FLAG("no-nbft",        0, &nonbft,        "Do not look at NBFT tables"),
-		OPT_STRING("nbft-path",   'N', "STR", &nbft_path, "user-defined path for NBFT tables"),
+		OPT_STRING("nbft-path",  0, "STR", &nbft_path, "user-defined path for NBFT tables"),
 		OPT_END()
 	};
 
