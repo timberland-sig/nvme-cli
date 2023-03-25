@@ -219,7 +219,22 @@ static json_object *discovery_to_json(struct nbft_info_discovery *disc)
 		return disc_json;
 }
 
-static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys, bool show_hfi, bool show_discovery)
+static const char *primary_admin_host_flag_to_str(unsigned int primary)
+{
+	static const char * const str[] = {
+		[NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_NOT_INDICATED] =	"not indicated",
+		[NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_UNSELECTED] =	"unselected",
+		[NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_SELECTED] =		"selected",
+		[NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_RESERVED] =		"reserved",
+	};
+
+	if (primary > NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_RESERVED)
+		return "INVALID";
+	return str[primary];
+}
+
+static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys,
+					bool show_hfi, bool show_discovery)
 {
 	struct json_object *nbft_json, *host_json;
 
@@ -244,9 +259,7 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 	json_object_add_value_int(host_json, "host_nqn_configured",
 				  nbft->host.host_nqn_configured);
 	json_object_add_value_string(host_json, "primary_admin_host_flag",
-				     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_NOT_INDICATED ? "not indicated" :
-				     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_UNSELECTED ? "unselected" :
-				     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_SELECTED ? "selected" : "reserved");
+				     primary_admin_host_flag_to_str(nbft->host.primary));
 	if (json_object_object_add(nbft_json, "host", host_json)) {
 		json_free_object(host_json);
 		goto fail;
