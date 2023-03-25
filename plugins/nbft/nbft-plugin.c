@@ -65,10 +65,6 @@ static char *mac_addr_to_string(unsigned char mac_addr[6])
 	return mac_string;
 }
 
-#define check_fail(x)		\
-	if (x)			\
-		goto fail;
-
 static json_object *hfi_to_json(struct nbft_info_hfi *hfi)
 {
 	struct json_object *hfi_json;
@@ -77,28 +73,44 @@ static json_object *hfi_to_json(struct nbft_info_hfi *hfi)
 	if (!hfi_json)
 		return NULL;
 
-	check_fail(json_object_add_value_int(hfi_json, "index", hfi->index));
-	check_fail(json_object_add_value_string(hfi_json, "transport", hfi->transport));
+	if (json_object_add_value_int(hfi_json, "index", hfi->index)
+	    || json_object_add_value_string(hfi_json, "transport", hfi->transport))
+		goto fail;
 
 	if (strcmp(hfi->transport, "tcp") == 0) {
-		check_fail(json_object_add_value_string(hfi_json, "pcidev", pci_sbdf_to_string(hfi->tcp_info.pci_sbdf)));
-		check_fail(json_object_add_value_string(hfi_json, "mac_addr", mac_addr_to_string(hfi->tcp_info.mac_addr)));
-		check_fail(json_object_add_value_int(hfi_json, "vlan", hfi->tcp_info.vlan));
-		check_fail(json_object_add_value_int(hfi_json, "ip_origin", hfi->tcp_info.ip_origin));
-		check_fail(json_object_add_value_string(hfi_json, "ipaddr", hfi->tcp_info.ipaddr));
-		check_fail(json_object_add_value_int(hfi_json, "subnet_mask_prefix", hfi->tcp_info.subnet_mask_prefix));
-		check_fail(json_object_add_value_string(hfi_json, "gateway_ipaddr", hfi->tcp_info.gateway_ipaddr));
-		check_fail(json_object_add_value_int(hfi_json, "route_metric", hfi->tcp_info.route_metric));
-		check_fail(json_object_add_value_string(hfi_json, "primary_dns_ipaddr", hfi->tcp_info.primary_dns_ipaddr));
-		check_fail(json_object_add_value_string(hfi_json, "secondary_dns_ipaddr", hfi->tcp_info.secondary_dns_ipaddr));
-		check_fail(json_object_add_value_string(hfi_json, "dhcp_server_ipaddr", hfi->tcp_info.dhcp_server_ipaddr));
-		if (hfi->tcp_info.host_name)
-			check_fail(json_object_add_value_string(hfi_json, "host_name", hfi->tcp_info.host_name));
-		check_fail(json_object_add_value_int(hfi_json, "this_hfi_is_default_route", hfi->tcp_info.this_hfi_is_default_route));
-		check_fail(json_object_add_value_int(hfi_json, "dhcp_override", hfi->tcp_info.dhcp_override));
+		if (json_object_add_value_string(hfi_json, "pcidev",
+						 pci_sbdf_to_string(hfi->tcp_info.pci_sbdf))
+		    || json_object_add_value_string(hfi_json, "mac_addr",
+						    mac_addr_to_string(hfi->tcp_info.mac_addr))
+		    || json_object_add_value_int(hfi_json, "vlan",
+						 hfi->tcp_info.vlan)
+		    || json_object_add_value_int(hfi_json, "ip_origin",
+						 hfi->tcp_info.ip_origin)
+		    || json_object_add_value_string(hfi_json, "ipaddr",
+						    hfi->tcp_info.ipaddr)
+		    || json_object_add_value_int(hfi_json, "subnet_mask_prefix",
+						 hfi->tcp_info.subnet_mask_prefix)
+		    || json_object_add_value_string(hfi_json, "gateway_ipaddr",
+						    hfi->tcp_info.gateway_ipaddr)
+		    || json_object_add_value_int(hfi_json, "route_metric",
+						 hfi->tcp_info.route_metric)
+		    || json_object_add_value_string(hfi_json, "primary_dns_ipaddr",
+						    hfi->tcp_info.primary_dns_ipaddr)
+		    || json_object_add_value_string(hfi_json, "secondary_dns_ipaddr",
+						    hfi->tcp_info.secondary_dns_ipaddr)
+		    || json_object_add_value_string(hfi_json, "dhcp_server_ipaddr",
+						    hfi->tcp_info.dhcp_server_ipaddr)
+		    || (hfi->tcp_info.host_name
+			&& json_object_add_value_string(hfi_json, "host_name",
+							hfi->tcp_info.host_name))
+		    || json_object_add_value_int(hfi_json, "this_hfi_is_default_route",
+						 hfi->tcp_info.this_hfi_is_default_route)
+		    || json_object_add_value_int(hfi_json, "dhcp_override",
+						 hfi->tcp_info.dhcp_override))
+			goto fail;
+		else
+			return hfi_json;
 	}
-
-	return hfi_json;
 fail:
 	json_free_object(hfi_json);
 	return NULL;
@@ -119,17 +131,19 @@ static json_object *ssns_to_json(struct nbft_info_subsystem_ns *ss)
 		goto fail;
 
 	for (i = 0; i < ss->num_hfis; i++)
-		check_fail(json_array_add_value_object(hfi_array_json, json_object_new_int(ss->hfis[i]->index)));
+		if (json_array_add_value_object(hfi_array_json,
+						json_object_new_int(ss->hfis[i]->index)))
+			goto fail;
 
-	check_fail(json_object_add_value_int(ss_json, "index", ss->index));
-	check_fail(json_object_add_value_int(ss_json, "num_hfis", ss->num_hfis));
-	check_fail(json_object_object_add(ss_json, "hfis", hfi_array_json));
-
-	check_fail(json_object_add_value_string(ss_json, "transport", ss->transport));
-	check_fail(json_object_add_value_string(ss_json, "traddr", ss->traddr));
-	check_fail(json_object_add_value_string(ss_json, "trsvcid", ss->trsvcid));
-	check_fail(json_object_add_value_int(ss_json, "subsys_port_id", ss->subsys_port_id));
-	check_fail(json_object_add_value_int(ss_json, "nsid", ss->nsid));
+	if (json_object_add_value_int(ss_json, "index", ss->index)
+	    || json_object_add_value_int(ss_json, "num_hfis", ss->num_hfis)
+	    || json_object_object_add(ss_json, "hfis", hfi_array_json)
+	    || json_object_add_value_string(ss_json, "transport", ss->transport)
+	    || json_object_add_value_string(ss_json, "traddr", ss->traddr)
+	    || json_object_add_value_string(ss_json, "trsvcid", ss->trsvcid)
+	    || json_object_add_value_int(ss_json, "subsys_port_id", ss->subsys_port_id)
+	    || json_object_add_value_int(ss_json, "nsid", ss->nsid))
+		goto fail;
 	{
 		char json_str[40];
 		char *json_str_p;
@@ -139,35 +153,43 @@ static json_object *ssns_to_json(struct nbft_info_subsystem_ns *ss)
 
 		switch (ss->nid_type) {
 		case NBFT_INFO_NID_TYPE_EUI64:
-			check_fail(json_object_add_value_string(ss_json, "nid_type", "eui64"));
+			if (json_object_add_value_string(ss_json, "nid_type", "eui64"))
+				goto fail;
 			for (i = 0; i < 8; i++)
 				json_str_p += sprintf(json_str_p, "%02x", ss->nid[i]);
 			break;
 
 		case NBFT_INFO_NID_TYPE_NGUID:
-			check_fail(json_object_add_value_string(ss_json, "nid_type", "nguid"));
+			if (json_object_add_value_string(ss_json, "nid_type", "nguid"))
+				goto fail;
 			for (i = 0; i < 16; i++)
 				json_str_p += sprintf(json_str_p, "%02x", ss->nid[i]);
 			break;
 
 		case NBFT_INFO_NID_TYPE_NS_UUID:
-			check_fail(json_object_add_value_string(ss_json, "nid_type", "uuid"));
+			if (json_object_add_value_string(ss_json, "nid_type", "uuid"))
+				goto fail;
 			nvme_uuid_to_string(ss->nid, json_str);
 			break;
 
 		default:
 			break;
 		}
-		check_fail(json_object_add_value_string(ss_json, "nid", json_str));
+		if (json_object_add_value_string(ss_json, "nid", json_str))
+			goto fail;
 	}
-	if (ss->subsys_nqn)
-		check_fail(json_object_add_value_string(ss_json, "subsys_nqn", ss->subsys_nqn));
-	check_fail(json_object_add_value_int(ss_json, "controller_id", ss->controller_id));
-	check_fail(json_object_add_value_int(ss_json, "asqsz", ss->asqsz));
-	if (ss->dhcp_root_path_string)
-		check_fail(json_object_add_value_string(ss_json, "dhcp_root_path_string", ss->dhcp_root_path_string));
-	check_fail(json_object_add_value_int(ss_json, "pdu_header_digest_required", ss->pdu_header_digest_required));
-	check_fail(json_object_add_value_int(ss_json, "data_digest_required", ss->data_digest_required));
+	if ((ss->subsys_nqn
+	     && json_object_add_value_string(ss_json, "subsys_nqn", ss->subsys_nqn))
+	    || json_object_add_value_int(ss_json, "controller_id", ss->controller_id)
+	    || json_object_add_value_int(ss_json, "asqsz", ss->asqsz)
+	    || (ss->dhcp_root_path_string
+		&& json_object_add_value_string(ss_json, "dhcp_root_path_string",
+						ss->dhcp_root_path_string))
+	    || json_object_add_value_int(ss_json, "pdu_header_digest_required",
+					 ss->pdu_header_digest_required)
+	    || json_object_add_value_int(ss_json, "data_digest_required",
+					 ss->data_digest_required))
+		goto fail;
 
 	return ss_json;
 fail:
@@ -180,21 +202,22 @@ static json_object *discovery_to_json(struct nbft_info_discovery *disc)
 	struct json_object *disc_json;
 
 	disc_json = json_create_object();
-	if (disc_json) {
-		check_fail(json_object_add_value_int(disc_json, "index", disc->index));
-		if (disc->security)
-			check_fail(json_object_add_value_int(disc_json, "security", disc->security->index));
-		if (disc->hfi)
-			check_fail(json_object_add_value_int(disc_json, "hfi", disc->hfi->index));
-		if (disc->uri)
-			check_fail(json_object_add_value_string(disc_json, "uri", disc->uri));
-		if (disc->nqn)
-			check_fail(json_object_add_value_string(disc_json, "nqn", disc->nqn));
-	}
-	return disc_json;
-fail:
-	json_free_object(disc_json);
-	return NULL;
+	if (!disc_json)
+		return NULL;
+
+	if (json_object_add_value_int(disc_json, "index", disc->index)
+	    || (disc->security
+		&& json_object_add_value_int(disc_json, "security", disc->security->index))
+	    || (disc->hfi
+		&& json_object_add_value_int(disc_json, "hfi", disc->hfi->index))
+	    || (disc->uri
+		&& json_object_add_value_string(disc_json, "uri", disc->uri))
+	    || (disc->nqn
+		&& json_object_add_value_string(disc_json, "nqn", disc->nqn))) {
+		json_free_object(disc_json);
+		return NULL;
+	} else
+		return disc_json;
 }
 
 static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys, bool show_hfi, bool show_discovery)
@@ -205,19 +228,25 @@ static struct json_object *nbft_to_json(struct nbft_info *nbft, bool show_subsys
 	if (!nbft_json)
 		return NULL;
 
-	check_fail(json_object_add_value_string(nbft_json, "filename", nbft->filename));
+	if (json_object_add_value_string(nbft_json, "filename", nbft->filename))
+		goto fail;
+
 	{
 		struct json_object *host_json;
 
 		host_json = json_create_object();
 		if (!host_json)
 			goto fail;
-		if (nbft->host.nqn)
-			check_fail(json_object_add_value_string(host_json, "nqn", nbft->host.nqn));
-		if (nbft->host.id)
-			check_fail(json_object_add_value_string(host_json, "id", util_uuid_to_string(nbft->host.id)));
-		json_object_add_value_int(host_json, "host_id_configured", nbft->host.host_id_configured);
-		json_object_add_value_int(host_json, "host_nqn_configured", nbft->host.host_nqn_configured);
+		if ((nbft->host.nqn
+		     && json_object_add_value_string(host_json, "nqn", nbft->host.nqn))
+		    || (nbft->host.id
+			&& json_object_add_value_string(host_json, "id",
+							util_uuid_to_string(nbft->host.id))))
+			goto fail;
+		json_object_add_value_int(host_json, "host_id_configured",
+					  nbft->host.host_id_configured);
+		json_object_add_value_int(host_json, "host_nqn_configured",
+					  nbft->host.host_nqn_configured);
 		json_object_add_value_string(host_json, "primary_admin_host_flag",
 					     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_NOT_INDICATED ? "not indicated" :
 					     nbft->host.primary == NBFT_INFO_PRIMARY_ADMIN_HOST_FLAG_UNSELECTED ? "unselected" :
