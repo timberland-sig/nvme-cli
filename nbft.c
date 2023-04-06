@@ -109,7 +109,7 @@ int read_sysfs_nbft_files(struct list_head *nbft_list, char *path)
 
 	for (i = 0; i < count; i++) {
 		snprintf(filename, sizeof(filename), "%s/%s", path, dent[i]->d_name);
-		ret = nbft_read(&nbft, filename);
+		ret = nvme_nbft_read(&nbft, filename);
 		if (!ret) {
 			entry = calloc(1, sizeof(*entry));
 			entry->nbft = nbft;
@@ -126,7 +126,7 @@ static void free_nbfts(struct list_head *nbft_list)
 	struct nbft_file_entry *entry;
 
 	while ((entry = list_pop(nbft_list, struct nbft_file_entry, node))) {
-		nbft_free(entry->nbft);
+		nvme_nbft_free(entry->nbft);
 		free(entry);
 	}
 }
